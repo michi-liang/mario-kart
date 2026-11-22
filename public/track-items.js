@@ -190,7 +190,8 @@ function aim(item, x, z, rate, dt) {
 
 export function createTrackItems(track, random = Math.random) {
   const rows = track.itemRows.map((fraction, row) => {
-    const index = track.finish + Math.round(track.count * fraction);
+    const index = track.oneWay ? Math.round(track.finish * fraction) :
+      track.finish + Math.round(track.count * fraction);
     const width = track.widthAt(index);
     const boxes = [-0.76, -0.38, 0, 0.38, 0.76].map((lane, column) => {
       const [x, , z] = track.coursePoint(index, lane * width);

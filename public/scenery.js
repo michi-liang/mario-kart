@@ -87,9 +87,103 @@ function finishFrame(track) {
 }
 
 export function buildScene(track) {
-  const scene = track.id === 'summit' ? summitScene(track) :
+  const scene = track.id === 'neon' ? neonScene(track) : track.id === 'summit' ? summitScene(track) :
     track.id === 'stadium' ? stadiumScene(track) : coastScene(track);
   return { ...scene, terrain: chunks(scene.terrain, 8), road: chunks(scene.road, 20) };
+}
+
+function neonScene(track) {
+  const terrain = [];
+  for (let z = -380; z < 600; z += 48) {
+    for (let x = -520; x < 580; x += 48) {
+      const tone = (Math.floor(x / 48) + Math.floor(z / 48)) % 3;
+      terrain.push({ color: ['#071226', '#09172d', '#0c1930'][tone],
+        points: [[x, 0, z], [x + 48, 0, z], [x + 48, 0, z + 48], [x, 0, z + 48]] });
+    }
+  }
+
+  const road = [];
+  for (let i = 0; i < track.finish; i++) {
+    roadStrip(road, track, i, i + 1, -halfRoad - 1.2, halfRoad + 1.2, '#192551');
+    roadStrip(road, track, i, i + 1, -halfRoad, halfRoad, i % 7 < 3 ? '#151a35' : '#1c2040');
+    roadStrip(road, track, i, i + 1, -halfRoad, -halfRoad + 0.48, '#36e7ed');
+    roadStrip(road, track, i, i + 1, halfRoad - 0.48, halfRoad, '#f555c7');
+    if (i % 8 < 3) roadStrip(road, track, i, i + 1, -0.10, 0.10, '#5968bd');
+  }
+  finishTiles(road, track, '#10152e', '#d7faff');
+
+  // These ribbons make the two city junctions legible from the road and map:
+  // a quick outer shortcut, then a pair of intertwined lanes around the tower.
+  const ribbon = (points, width, base, edge) => {
+    for (let i = 0; i < points.length - 1; i++) {
+      const [ax, az] = points[i], [bx, bz] = points[i + 1];
+      const span = Math.hypot(bx - ax, bz - az) || 1;
+      const nx = (bz - az) / span * width, nz = -(bx - ax) / span * width;
+      road.push({ color: base, points: [[ax + nx, 0.12, az + nz], [ax - nx, 0.12, az - nz],
+        [bx - nx, 0.12, bz - nz], [bx + nx, 0.12, bz + nz]] });
+      road.push({ color: edge, points: [[ax + nx, 0.14, az + nz], [ax + nx * .79, 0.14, az + nz * .79],
+        [bx + nx * .79, 0.14, bz + nz * .79], [bx + nx, 0.14, bz + nz]] });
+    }
+  };
+  ribbon([[68, -22], [142, -8], [183, 39], [132, 92], [71, 74]], 6.1, '#20295a', '#39e8ef');
+  ribbon([[230, 130], [304, 117], [383, 169], [384, 246], [319, 276], [259, 228], [269, 166]], 5.7, '#302154', '#ff5bd7');
+  ribbon([[247, 140], [306, 162], [351, 214], [329, 274], [262, 278], [217, 225], [240, 176]], 5.1, '#1d315f', '#58e8ff');
+
+  const gantry = [];
+  const finish = finishFrame(track);
+  for (const side of [-1, 1]) box(gantry, finish, side * (halfRoad + 0.7) - 0.5, 0, -0.5, 1, 8, 1,
+    ['#253568', '#314b8f', '#57eaff']);
+  box(gantry, finish, -halfRoad - 0.2, 6.6, -0.55, halfRoad * 2 + 0.4, 1.4, 1.1,
+    ['#281a50', '#3d2670', '#ff64d7']);
+
+  const props = [];
+  const occupied = (x, z) => track.roadDistance(x, z) < wallOffset + 10;
+  for (let gx = -480; gx <= 540; gx += 56) {
+    for (let gz = -340; gz <= 560; gz += 56) {
+      if (occupied(gx, gz) || hash(gx * .037 + gz * .081) < .36) continue;
+      const height = 18 + hash(gx * 1.7 + gz * 2.1) * 72;
+      const width = 18 + hash(gx + gz) * 16;
+      const mesh = [];
+      const place = ([dx, y, dz]) => [gx + dx, y, gz + dz];
+      const neon = hash(gx * 5 + gz) > .5 ? '#4eeaff' : '#ff59cd';
+      box(mesh, place, -width / 2, 0, -width / 2, width, height, width, ['#111936', '#17234a', '#1d2b5a']);
+      box(mesh, place, -width / 2 - .08, height * .68, -width / 2 - .1, width + .16, 1.1, .18,
+        [neon, neon, neon]);
+      props.push({ x: gx, z: gz, mesh, range: 180, pad: width });
+    }
+  }
+  for (const fraction of track.boostRows) {
+    const index = Math.round(track.finish * fraction);
+    const [x, , z] = track.coursePoint(index);
+    const [rightX, , rightZ] = track.coursePoint(index, 1);
+    const place = ([dx, y, dz]) => [x + (rightX - x) * dx - (rightZ - z) * dz, y,
+      z + (rightZ - z) * dx + (rightX - x) * dz];
+    const mesh = [];
+    slab(mesh, place, -halfRoad * .72, 0.035, -2.2, halfRoad * 1.44, 0.07, 4.4, '#247bc2', '#5cf4ff');
+    props.push({ x, z, mesh, range: 135, pad: 8 });
+  }
+  // Two low ramp gates signal the jumps without disrupting the flat physics.
+  for (const fraction of [.36, .72]) {
+    const index = Math.round(track.finish * fraction);
+    const [x, , z] = track.coursePoint(index);
+    const [rightX, , rightZ] = track.coursePoint(index, 1);
+    const place = ([dx, y, dz]) => [x + (rightX - x) * dx - (rightZ - z) * dz, y,
+      z + (rightZ - z) * dx + (rightX - x) * dz];
+    const mesh = [];
+    slab(mesh, place, -halfRoad * .62, 0.04, -3.5, halfRoad * 1.24, 0.34, 4.8, '#3e206b', '#ff67db');
+    props.push({ x, z, mesh, range: 135, pad: 8 });
+  }
+  measure([...terrain, ...road]);
+  return {
+    sky: ['#020519', '#101340'], ridge: ['#15164a', '#29184c'], ridgeScale: .16, ground: '#05091c',
+    terrain, road, trees: [], gantry, props,
+    filmShots: [
+      { progress: .05, side: -1, height: 13, sweep: 17 },
+      { progress: .34, side: 1, height: 20, sweep: -16 },
+      { progress: .62, side: -1, height: 18, sweep: 15 },
+      { progress: .89, side: 1, height: 22, sweep: -18 },
+    ],
+  };
 }
 
 function chunks(faces, size) {

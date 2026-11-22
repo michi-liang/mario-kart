@@ -36,6 +36,18 @@ export function launchFromGrid(car) {
 function course(track) {
   let data = derived.get(track);
   if (!data) {
+    if (track.oneWay) {
+      const gateIndexes = Array.from({ length: 8 }, (_, i) =>
+        Math.round(track.finish * (i + 1) / 8));
+      const gates = gateIndexes.map((index, checkpoint) => {
+        const [x, , z] = track.coursePoint(index);
+        const [rightX, , rightZ] = track.coursePoint(index, 1);
+        return { x, z, rightX: rightX - x, rightZ: rightZ - z, offset: index, checkpoint };
+      });
+      data = { gates, order: track.centerline.slice(0, track.finish + 1) };
+      derived.set(track, data);
+      return data;
+    }
     const { count, finish, coursePoint, centerline } = track;
     const gates = Array.from({ length: 8 }, (_, i) => {
       const index = finish + Math.round(count * i / 8);
@@ -182,13 +194,24 @@ export function advanceProgress(track, car, previousX, previousZ, elapsed, dt) {
     const x = previousX + (car.x - previousX) * t - gate.x;
     const z = previousZ + (car.z - previousZ) * t - gate.z;
     if (Math.abs(x * gate.rightX + z * gate.rightZ) <= wallOffset + 0.15) {
+      if (track.oneWay) {
+        car.started = true;
+        car.checkpoint++;
+        if (car.checkpoint === gates.length) car.finishedAt = elapsed - dt + t * dt;
+      } else {
       if (car.checkpoint === 0) {
         if (car.started) car.lap++;
         car.started = true;
       }
       car.checkpoint = (car.checkpoint + 1) % gates.length;
       if (car.lap === track.laps) car.finishedAt = elapsed - dt + t * dt;
+      }
     }
+  }
+  if (track.oneWay) {
+    const road = track.nearestRoad(car.x, car.z);
+    car.progress = Math.min(track.finish, road.index);
+    return;
   }
   if (!car.started) {
     car.progress = -Math.hypot(car.x - gates[0].x, car.z - gates[0].z);
