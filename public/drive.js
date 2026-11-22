@@ -1,5 +1,8 @@
-import { centerline, coursePoint, halfRoad, mapPoint, roadDistance, start, startIndex, wallOffset, wallSegments } from './track.js';
-import { advanceProgress, catchUpFactor, countdownSeconds, finish, hitWall, resetProgress, standings, wallClearance } from './race.js';
+import { centerline, coursePoint, halfRoad, mapPoint, nearestRoad, roadDistance, start, startIndex, wallOffset, wallSegments } from './track.js';
+import {
+  advanceProgress, catchUpFactor, countdownSeconds, finish, hitWall, resetProgress,
+  resolveKartCollisions, standings, updateWrongWay, wallClearance,
+} from './race.js';
 import { headDetails, playerColors, roster } from './roster.js';
 import { bananaColor, bananaSpinTime, createTrackItems, mushroomColor, mushroomTopSpeed } from './track-items.js';
 
@@ -79,6 +82,7 @@ function createViews(players) {
     panel.innerHTML = `
       <canvas aria-label="Chase camera for player ${player.number}"></canvas>
       <div class="view-label"><strong>P${player.number}</strong> ${roster[player.character].name}</div>
+      <div class="wrong-way" role="status" hidden>Wrong Way</div>
       <div class="race-label"></div>
       <div class="race-countdown" aria-hidden="true"></div>
       <div class="speed"><strong>0</strong><span>KM/H</span></div>
@@ -89,6 +93,7 @@ function createViews(players) {
     car.speedLabel = panel.querySelector('.speed strong');
     car.surfaceLabel = panel.querySelector('.surface');
     car.raceLabel = panel.querySelector('.race-label');
+    car.wrongWayLabel = panel.querySelector('.wrong-way');
     car.countdownLabel = panel.querySelector('.race-countdown');
     const marker = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     const circle = document.createElementNS(marker.namespaceURI, 'circle');
@@ -269,7 +274,8 @@ function physics(car, dt, pace) {
   const reverseFromStop = canDrive && (driftButton || keyboardDrift) && requestedThrottle === 0 && car.speed <= 0;
   const throttle = reverseFromStop ? -1 : requestedThrottle;
   const brake = finished || driftButton;
-  const distance = roadDistance(car.x, car.z);
+  const road = nearestRoad(car.x, car.z);
+  const { distance } = road;
   const onRoad = distance < halfRoad + 0.45;
   const driftHeld = throttle > 0 && (driftButton || keyboardDrift);
   const canDrift = onRoad && car.speed > 7;
@@ -320,7 +326,7 @@ function physics(car, dt, pace) {
   car.x += Math.sin(car.yaw) * car.speed * dt;
   car.z += Math.cos(car.yaw) * car.speed * dt;
   const wall = distance + Math.abs(car.speed) * dt > wallClearance && hitWall(car, previousX, previousZ);
-  advanceProgress(car, previousX, previousZ, elapsed - countdownSeconds, dt);
+  updateWrongWay(car, road, dt);
   const following = 1 - Math.exp(-8 * dt);
   camera.x += (car.x - camera.x) * following;
   camera.z += (car.z - camera.z) * following;
@@ -846,6 +852,7 @@ function hud() {
     car.surfaceLabel.textContent = car.surface;
     car.surfaceLabel.style.color = car.surfaceColor;
     if (car.countdownLabel.textContent !== countdown) car.countdownLabel.textContent = countdown;
+    car.wrongWayLabel.hidden = car.finishedAt !== null || car.wrongWayTime < 0.45;
     car.raceLabel.textContent = `#${index + 1} · ${car.finishedAt === null ? 'Lap ' + Math.min(3, car.lap + 1) + '/3' : 'Finished'}`;
     const [x, y] = mapPoint(car.x, car.z);
     car.marker.setAttribute('transform', `translate(${Math.max(5, Math.min(115, x))} ${Math.max(5, Math.min(95, y))})`);
@@ -891,9 +898,15 @@ function frame(now) {
       elapsed += step;
       pendingTime -= step;
       if (elapsed > countdownSeconds) {
+        const raceTime = elapsed - countdownSeconds;
         const leaderProgress = Math.max(...cars.map(car => car.progress));
+        const starts = cars.map(({ x, z }) => [x, z]);
         for (const car of cars) physics(car, step, catchUpFactor(car, leaderProgress, cars.length));
-        if (cars.some(car => car.finishedAt === null)) pickups = trackItems.update(elapsed - countdownSeconds, cars);
+        resolveKartCollisions(cars);
+        for (const [index, car] of cars.entries()) {
+          advanceProgress(car, ...starts[index], raceTime, step);
+        }
+        if (cars.some(car => car.finishedAt === null)) pickups = trackItems.update(raceTime, cars);
       }
     }
     for (const car of cars) car.mesh = carMesh(car);

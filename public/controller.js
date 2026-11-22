@@ -20,7 +20,7 @@ const reverse = document.querySelector('#reverse');
 const landscape = window.matchMedia('(orientation: landscape)');
 const pressed = new Map([brake, gas, reverse].map(button => [button, new Set()]));
 const tiltDeadZone = 1.3;
-const steeringReferenceAngle = 41;
+const fullSteerAngle = 41;
 const id = sessionStorage.getItem('pocket-circuit-seat') ||
   Array.from(crypto.getRandomValues(new Uint8Array(12)), byte => byte.toString(16).padStart(2, '0')).join('');
 sessionStorage.setItem('pocket-circuit-seat', id);
@@ -36,11 +36,8 @@ let sensorTimer;
 let lastError;
 
 function tiltResponse(angle) {
-  const value = Math.max(0, (Math.abs(angle) - tiltDeadZone) / (steeringReferenceAngle - tiltDeadZone));
-  if (value === 0) return 0;
-  // Continue with the same slope where the previous steering limit began.
-  const response = value <= 1 ? 1.12 * value - 0.12 * value ** 2 : 1 + 0.88 * (value - 1);
-  return Math.sign(angle) * response;
+  const value = Math.max(0, Math.min(1, (Math.abs(angle) - tiltDeadZone) / (fullSteerAngle - tiltDeadZone)));
+  return value === 0 ? 0 : Math.sign(angle) * (1.12 * value - 0.12 * value ** 2);
 }
 function calibrate() {
   baseline = null;
@@ -181,7 +178,7 @@ function showRoom(state) {
 async function tick() {
   if (document.hidden) return;
   const steer = performance.now() - motionSeen < 500 ? steering : 0;
-  needle.style.left = (50 + Math.max(-1, Math.min(1, steer)) * 46) + '%';
+  needle.style.left = (50 + steer * 46) + '%';
   if (sending) return;
   sending = true;
   const command = commands[0];

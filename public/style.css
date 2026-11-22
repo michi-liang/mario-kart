@@ -232,8 +232,22 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
   border-radius: 6px;
   font-size: clamp(10px, 1.3vw, 14px);
 }
-.view-label { left: 8px; }
-.view-label strong { color: var(--seat); }
+.view-label { left: 8px; background: var(--seat); color: #13202a; }
+.wrong-way {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: #851d2c;
+  color: #fff3ec;
+  font-size: clamp(11px, 1.5vw, 17px);
+  font-weight: 850;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
 .race-label { right: 8px; }
 .race-label:empty { display: none; }
 .course-map { display: block; width: 100%; background: #101b23; border: 1px solid #2b3941; border-radius: 12px; }
