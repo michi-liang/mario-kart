@@ -42,6 +42,7 @@ const chase = {
 const keys = new Set();
 let room = { phase: 'menu', mode: 'test', round: 0, players: [], soloPick: 0 };
 let cars = [];
+let spectatorView;
 let elapsed = 0;
 let rosterSignature = '';
 let drawnRound = -1;
@@ -131,6 +132,17 @@ function createViews(players) {
     return car;
   });
   cars.forEach(reset);
+  spectatorView = undefined;
+  if (players.length === 3) {
+    const panel = document.createElement('article');
+    panel.className = 'viewport spectator-view';
+    panel.innerHTML = `
+      <canvas aria-label="Live spectator camera"></canvas>
+      <div class="view-label spectator-label">Spectator</div>`;
+    views.append(panel);
+    const canvas = panel.querySelector('canvas');
+    spectatorView = { canvas, context: canvas.getContext('2d', { alpha: false }), lastDraw: -Infinity };
+  }
 }
 document.querySelector('#map-course').setAttribute('d', centerline.map(([x, , z], i) =>
   (i ? 'L' : 'M') + mapPoint(x, z).map(value => value.toFixed(1)).join(' ')).join(' ') + ' Z');
@@ -804,10 +816,29 @@ function panCourse(now) {
 }
 let filmSize = '';
 
-function draw(car, shot) {
-  const canvas = car ? car.canvas : courseFilm;
+function spectate(now) {
+  if (!spectatorView || now - spectatorView.lastDraw < 1000 / 30) return;
+  spectatorView.lastDraw = now;
+  const shotDuration = 8;
+  const shot = Math.floor(elapsed / shotDuration);
+  const driver = cars[shot % cars.length];
+  const camera = driver.camera;
+  const sweep = reduceMotion.matches ? 0 : Math.sin((elapsed % shotDuration) / shotDuration * Math.PI) * 0.35;
+  const bearing = camera.yaw + (shot % 2 ? -1 : 1) * (0.88 + sweep);
+  const x = camera.x - Math.sin(bearing) * 19;
+  const z = camera.z - Math.cos(bearing) * 19;
+  const targetX = camera.x + Math.sin(camera.yaw) * 3;
+  const targetZ = camera.z + Math.cos(camera.yaw) * 3;
+  const yaw = Math.atan2(targetX - x, targetZ - z);
+  const pitch = Math.atan2(10.5, Math.hypot(targetX - x, targetZ - z));
+  draw(null, { x, z, yaw, pitch, height: 11 }, spectatorView);
+}
+
+function draw(car, shot, spectator) {
+  const target = car ?? spectator;
+  const canvas = target?.canvas ?? courseFilm;
   const camera = car?.camera;
-  ctx = car ? car.context : filmContext;
+  ctx = target?.context ?? filmContext;
   const dpr = Math.min(devicePixelRatio || 1, !car || cars.length > 1 ? 1.25 : 1.75);
   width = canvas.clientWidth;
   height = canvas.clientHeight;
@@ -861,6 +892,8 @@ function draw(car, shot) {
       return cameraSpace([car.x + Math.cos(angle) * 1.45, 0.01, car.z + Math.sin(angle) * 1.65]);
     });
     polygon(shadow, '#17282d66');
+  }
+  if (target) {
     for (const rival of cars) {
       const [x, , z] = cameraSpace([rival.x, 0, rival.z]);
       if (z < 1 || Math.abs(x) > z * width / (2 * focal) + 3) continue;
@@ -989,6 +1022,7 @@ function frame(now) {
     }
     for (const car of cars) car.mesh = carMesh(car);
     for (const car of cars) draw(car);
+    spectate(now);
     hud();
   } else {
     panCourse(now);

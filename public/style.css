@@ -221,7 +221,9 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
   white-space: nowrap;
 }
 .views { display: grid; gap: 2px; background: #111a22; }
-.views:not([data-count="1"]) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.views:is([data-count="2"], [data-count="3"], [data-count="4"]) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .views .viewport { min-width: 0; overflow: hidden; }
 .views .speed { top: auto; bottom: 9px; left: 9px; min-width: 0; padding: 4px 8px; }
 .views .speed strong { font-size: clamp(16px, 2.2vw, 32px); }
@@ -235,6 +237,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
   font-size: clamp(10px, 1.3vw, 14px);
 }
 .view-label { left: 8px; background: var(--seat); color: #13202a; }
+.spectator-label { background: #10191de8; color: #e4eeef; font-weight: 730; }
 .wrong-way {
   position: absolute;
   top: 8px;

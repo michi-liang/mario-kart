@@ -1,6 +1,6 @@
 # Pocket Circuit
 
-A local kart racer for up to four players on Sunbreak Coast. Each phone joins through the same QR code and receives its player number in join order. The laptop shows one chase view per player and a shared course map with the trackside barriers marked.
+A local kart racer for up to four players on Sunbreak Coast. Each phone joins through the same QR code and receives its player number in join order. Two players race side by side. Three or four players use a 2×2 grid, with a live spectator camera in the bottom-right panel for a three-player race. All players share a course map with the trackside barriers marked.
 
 ## Try tilt steering
 
