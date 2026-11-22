@@ -14,6 +14,7 @@
       <div class="mark" aria-hidden="true">▥</div>
       <h1>Pocket Circuit</h1>
       <span class="track-name">SUNBREAK COAST</span>
+      <button id="fullscreen" class="secondary" type="button" aria-pressed="false">Fullscreen</button>
       <button id="back" class="secondary" type="button" hidden>Menu</button>
     </header>
     <div class="layout">
@@ -32,7 +33,7 @@
       <section id="race" class="drive" aria-label="Driving simulator" hidden>
         <div id="views" class="views"></div>
         <footer class="drive-footer">
-          <span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or arrows · <kbd>Shift</kbd> drift</span>
+          <span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or arrows · <kbd>Shift</kbd> drift · <kbd>E</kbd> throw shell</span>
         </footer>
       </section>
       <aside class="pairing" id="pairing">
@@ -46,12 +47,13 @@
         <div id="seats" class="seats"></div>
       </aside>
       <aside id="race-info" class="pairing race-info" hidden>
+        <h2>Leaderboard</h2>
+        <ol id="standings" class="standings"></ol>
         <h2>Course map</h2>
         <svg class="course-map" viewBox="0 0 120 100" aria-label="Track map">
           <path id="map-walls" />
           <path id="map-course" /><g id="map-pickups"></g><g id="map-cars"></g>
         </svg>
-        <ol id="standings" class="standings"></ol>
       </aside>
     </div>
   </main>

@@ -78,7 +78,7 @@ export function standings(cars) {
 export function catchUpFactor(car, leaderProgress, racerCount) {
   if (!car.started || car.finishedAt !== null || racerCount < 2) return 1;
   const metersBehind = Math.max(0, (leaderProgress - car.progress) * step);
-  return 1 + 0.015 * Math.min(1, metersBehind / 160);
+  return 1 + 0.03 * Math.min(1, metersBehind / 160);
 }
 
 function confineToTrack(car) {
@@ -151,14 +151,9 @@ export function hitWall(car, previousX, previousZ) {
   const outward = dx * normalX + dz * normalZ;
   if (outward <= 0) return false;
 
-  // Keep the motion along the barrier and bounce the outward component back.
-  const reboundX = dx - 1.22 * outward * normalX;
-  const reboundZ = dz - 1.22 * outward * normalZ;
-  const direction = Math.sign(car.speed);
-  const yaw = Math.atan2(reboundX * direction, reboundZ * direction);
-  const turn = yaw - car.yaw;
-  car.yaw += Math.atan2(Math.sin(turn), Math.cos(turn));
-  car.speed *= Math.hypot(reboundX, reboundZ) / Math.hypot(dx, dz);
+  const impact = Math.min(1, outward / Math.hypot(dx, dz));
+  const contactSpeed = 4 + 20 * (1 - impact ** 2);
+  car.speed = Math.sign(car.speed) * Math.min(Math.abs(car.speed), contactSpeed);
   car.driftDirection = 0;
   car.charge = 0;
   car.boostTime = 0;

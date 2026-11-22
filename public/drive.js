@@ -4,7 +4,7 @@ import {
   resolveKartCollisions, standings, updateWrongWay, wallClearance,
 } from './race.js';
 import { headDetails, playerColors, roster } from './roster.js';
-import { bananaColor, bananaSpinTime, createTrackItems, mushroomColor, mushroomTopSpeed } from './track-items.js';
+import { bananaColor, bananaSpinTime, createTrackItems, mushroomColor, mushroomTopSpeed, shellColor } from './track-items.js';
 
 const select = id => document.getElementById(id);
 const views = select('views');
@@ -14,6 +14,8 @@ const courseFilm = select('course-film');
 const filmContext = courseFilm.getContext('2d', { alpha: false });
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const ranking = select('standings');
+const fullscreenButton = select('fullscreen');
+const layout = document.querySelector('.layout');
 const screens = { menu: select('menu'), selection: select('selection'), racing: select('race') };
 const startButton = select('start');
 const status = document.querySelector('#phone-status');
@@ -53,12 +55,28 @@ let pickupMarkers = '';
 let lastFilmDraw = -Infinity;
 let width, height, focal, ctx;
 
+function fullscreenState() {
+  fullscreenButton.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
+  fullscreenButton.setAttribute('aria-pressed', String(!!document.fullscreenElement));
+}
+fullscreenButton.hidden = !document.documentElement.requestFullscreen;
+fullscreenButton.addEventListener('click', async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch {
+    fullscreenButton.textContent = 'Fullscreen unavailable';
+  }
+});
+document.addEventListener('fullscreenchange', fullscreenState);
+
 function reset(car, index) {
   const [x, , z] = coursePoint(startIndex - Math.floor(index / 2) * 2,
     cars.length > 1 ? (index % 2 === 0 ? -2.7 : 2.7) : 0);
   Object.assign(car, {
     x, z, yaw: start.yaw, speed: 0, steering: 0, slip: 0, driftDirection: 0, charge: 0,
     boostTime: 0, boostColor: '', spinTime: 0, effectTime: 0, surface: 'ON TRACK', surfaceColor: '',
+    hasShell: false, fireQueued: false, lastShellShot: car.controls.shellShot ?? 0, wallContact: false,
   });
   Object.assign(car.camera, { x, z, yaw: car.yaw, speed: 0 });
   resetProgress(car);
@@ -95,6 +113,12 @@ function createViews(players) {
     car.raceLabel = panel.querySelector('.race-label');
     car.wrongWayLabel = panel.querySelector('.wrong-way');
     car.countdownLabel = panel.querySelector('.race-countdown');
+    const shellBadge = document.createElement('div');
+    shellBadge.className = 'shell-badge';
+    shellBadge.textContent = 'Green shell ready';
+    shellBadge.hidden = true;
+    panel.append(shellBadge);
+    car.shellBadge = shellBadge;
     const marker = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     const circle = document.createElementNS(marker.namespaceURI, 'circle');
     circle.setAttribute('r', '4.3');
@@ -112,11 +136,16 @@ document.querySelector('#map-course').setAttribute('d', centerline.map(([x, , z]
   (i ? 'L' : 'M') + mapPoint(x, z).map(value => value.toFixed(1)).join(' ')).join(' ') + ' Z');
 select('map-walls').setAttribute('d', wallSegments.map(segment =>
   segment.map(([x, z], i) => (i ? 'L' : 'M') + mapPoint(x, z).map(value => value.toFixed(1)).join(' ')).join(' ')).join(' '));
-const driveKeys = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowleft', 'arrowdown', 'arrowright', 'shift']);
+const driveKeys = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowleft', 'arrowdown', 'arrowright', 'shift', 'e']);
 window.addEventListener('keydown', event => {
   const key = event.key.toLowerCase();
   if (room.phase !== 'racing' || !driveKeys.has(key) || event.ctrlKey || event.metaKey || event.altKey) return;
   event.preventDefault();
+  if (key === 'e') {
+    const driver = cars.find(car => car.keyboard || car.number === 1);
+    if (driver && !event.repeat) driver.fireQueued = true;
+    return;
+  }
   keys.add(key);
 });
 window.addEventListener('keyup', event => keys.delete(event.key.toLowerCase()));
@@ -196,6 +225,7 @@ function updateRoom(state) {
   select('back').hidden = room.phase === 'menu';
   select('pairing').hidden = room.phase === 'racing';
   select('race-info').hidden = room.phase !== 'racing';
+  layout.classList.toggle('race-layout', room.phase === 'racing');
   courseFilm.hidden = room.phase === 'racing';
   if (room.phase === 'racing') {
     if (drawnRound !== room.round) {
@@ -320,12 +350,15 @@ function physics(car, dt, pace) {
   const driftSteer = car.steering * car.driftDirection;
   const slip = car.driftDirection * (0.40 + 0.14 * driftSteer);
   car.slip += (slip - car.slip) * grip;
-  const turnRate = car.speed / (3.8 + Math.abs(car.speed) * 0.42);
+  const movingTurnRate = car.speed / (3.8 + Math.abs(car.speed) * 0.42);
+  const turnRate = car.wallContact && throttle ? Math.sign(car.speed || throttle) *
+    Math.max(0.85, Math.abs(movingTurnRate)) : movingTurnRate;
   const turnInput = drifting ? car.driftDirection * (0.10 + driftSteer * 1.28) : car.steering;
   if (!spinning) car.yaw += turnInput * turnRate * dt;
   car.x += Math.sin(car.yaw) * car.speed * dt;
   car.z += Math.cos(car.yaw) * car.speed * dt;
   const wall = distance + Math.abs(car.speed) * dt > wallClearance && hitWall(car, previousX, previousZ);
+  car.wallContact = wall;
   updateWrongWay(car, road, dt);
   const following = 1 - Math.exp(-8 * dt);
   camera.x += (car.x - camera.x) * following;
@@ -334,11 +367,11 @@ function physics(car, dt, pace) {
   camera.speed += (Math.min(1.25, Math.max(0, car.speed / 24)) - camera.speed) * following;
   const stage = drifting && turboStage(car.charge);
   car.spinTime = Math.max(0, car.spinTime - dt);
-  car.surface = spinning ? 'BANANA SPIN' : wall ? 'WALL' :
+  car.surface = spinning ? car.spinLabel : wall ? 'WALL' :
     boosting ? (mushroom ? 'MUSHROOM BOOST' : 'TURBO') :
     stage ? 'TURBO READY' :
     drifting ? 'DRIFTING' : car.speed < -0.2 ? 'REVERSING' : onRoad ? 'ON TRACK' : 'OFF ROAD';
-  car.surfaceColor = spinning ? bananaColor : wall ? '#ffc29f' : boosting ? car.boostColor : stage ? stage.color : '';
+  car.surfaceColor = spinning ? car.spinColor : wall ? '#ffc29f' : boosting ? car.boostColor : stage ? stage.color : '';
 }
 
 function shoreX(z) {
@@ -690,6 +723,11 @@ ellipsoid(mushroomMesh, point => point, [0, 1.12, 0], [0.82, 0.36, 0.82],
 ellipsoid(mushroomMesh, point => point, [-0.23, 1.41, 0.18], [0.30, 0.08, 0.20],
   ['#ffcebf', '#fff0e6']);
 
+const shellMesh = [];
+ellipsoid(shellMesh, point => point, [0, 0.44, 0], [0.78, 0.19, 0.68],
+  ['#4a785e', '#e5edc7', '#fff1d6']);
+ellipsoid(shellMesh, point => point, [0, 0.6, 0], [0.71, 0.48, 0.61],
+  ['#184939', '#287851', '#45b46f', '#83dd83']);
 const bananaMesh = [];
 ellipsoid(bananaMesh, point => point, [0, 0.38, 0], [0.19, 0.38, 0.19],
   ['#bb8b26', '#ebc638', '#ffed73']);
@@ -805,12 +843,13 @@ function draw(car, shot) {
       if (rival === car || z < 45) drawTurbo(rival);
       faces.push(...rival.mesh);
     }
-    for (const item of pickups) {
+    for (const item of pickups.concat(trackItems.shells)) {
       const [x, , z] = cameraSpace([item.x, 0, item.z]);
       if (z < 0.5 || Math.abs(x) > z * width / (2 * focal) + 2.5) continue;
       const banana = item.type === 'banana';
-      const bob = banana ? 0 : Math.sin(elapsed * 3.8 + item.id) * 0.18;
-      for (const face of banana ? bananaMesh : mushroomMesh) {
+      const bob = banana || item.moving ? 0 : Math.sin(elapsed * 3.8 + item.id) * 0.18;
+      const mesh = banana ? bananaMesh : item.type === 'shell' ? shellMesh : mushroomMesh;
+      for (const face of mesh) {
         faces.push({ ...face, points: face.points.map(([x, y, z]) => [x + item.x, y + bob, z + item.z]) });
       }
     }
@@ -850,6 +889,7 @@ function hud() {
     car.surfaceLabel.style.color = car.surfaceColor;
     if (car.countdownLabel.textContent !== countdown) car.countdownLabel.textContent = countdown;
     car.wrongWayLabel.hidden = car.finishedAt !== null || car.wrongWayTime < 0.45;
+    car.shellBadge.hidden = !car.hasShell || car.finishedAt !== null;
     car.raceLabel.textContent = `#${index + 1} · ${car.finishedAt === null ? 'Lap ' + Math.min(3, car.lap + 1) + '/3' : 'Finished'}`;
     const [x, y] = mapPoint(car.x, car.z);
     car.marker.setAttribute('transform', `translate(${Math.max(5, Math.min(115, x))} ${Math.max(5, Math.min(95, y))})`);
@@ -879,7 +919,7 @@ function hud() {
       marker.setAttribute('cx', x);
       marker.setAttribute('cy', y);
       marker.setAttribute('r', '2');
-      marker.setAttribute('fill', mushroomColor);
+      marker.setAttribute('fill', item.type === 'shell' ? shellColor : mushroomColor);
       return marker;
     }));
   }
@@ -902,8 +942,14 @@ function frame(now) {
         resolveKartCollisions(cars);
         for (const [index, car] of cars.entries()) {
           advanceProgress(car, ...starts[index], raceTime, step);
+          const shot = car.controls.shellShot ?? 0;
+          if (car.fireQueued || shot > car.lastShellShot) {
+            trackItems.throwShell(car, raceTime);
+            car.fireQueued = false;
+            car.lastShellShot = shot;
+          }
         }
-        if (cars.some(car => car.finishedAt === null)) pickups = trackItems.update(raceTime, cars);
+        if (cars.some(car => car.finishedAt === null)) pickups = trackItems.update(raceTime, cars, step);
       }
     }
     for (const car of cars) car.mesh = carMesh(car);
