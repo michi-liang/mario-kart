@@ -103,7 +103,16 @@ function queueCommand(command) {
 }
 for (const button of arrowButtons) button.addEventListener('click', () => queueCommand(button.dataset.arrow));
 confirmPick.addEventListener('click', () => queueCommand('confirm'));
-document.querySelector('#fire-shell').addEventListener('click', () => queueCommand('fire'));
+const use = document.querySelector('#fire-shell');
+use.addEventListener('pointerdown', event => {
+  if (event.button !== 0) return;
+  // A second finger can send pointer events without generating a click.
+  event.preventDefault();
+  queueCommand('fire');
+});
+use.addEventListener('click', event => {
+  if (event.detail === 0 && !event.pointerType) queueCommand('fire');
+});
 
 for (const [button, sources] of pressed) {
   function setHeld(source, down) {
@@ -183,6 +192,7 @@ async function tick() {
   sending = true;
   const command = commands[0];
   const throttle = pressed.get(gas).size ? 1 : 0;
+  let sent = false;
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -196,6 +206,7 @@ async function tick() {
       if (command && commands[0] === command) commands.shift();
       showConnection();
       showRoom(result);
+      sent = true;
     } else {
       showConnection(result.error || 'Controller unavailable.');
     }
@@ -203,6 +214,7 @@ async function tick() {
     showConnection('Reconnecting to laptop.');
   } finally {
     sending = false;
+    if (sent && commands.length) tick();
   }
 }
 
