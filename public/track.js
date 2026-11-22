@@ -84,7 +84,8 @@ function spline(a, b, c, d, t) {
     (3 * b - a - 3 * c + d) * t ** 3);
 }
 
-function buildTrack({ id, name, tagline, anchors, startIndex, itemRows, laps = 3, profile = flatSurface, narrowed = [], jump }) {
+function buildTrack({ id, name, tagline, anchors, startIndex, itemRows, laps = 3, profile = flatSurface, narrowed = [], jump,
+  oneWay = false, oneWayFinish = 1, boostRows = [], jumpRows = [] }) {
   const points = anchors.flatMap((point, i) => {
     const previous = anchors[(i + anchors.length - 1) % anchors.length];
     const next = anchors[(i + 1) % anchors.length];
@@ -266,8 +267,10 @@ function buildTrack({ id, name, tagline, anchors, startIndex, itemRows, laps = 3
   }
 
   return {
-    id, name, tagline, count, step, courseLength, centerline, start, startIndex, laps,
-    finish: startIndex + 10, itemRows, jump, elevated: profile !== flatSurface, bounds: { minX, maxX, minZ, maxZ },
+    id, name, tagline, count, step, courseLength: oneWay ? courseLength * oneWayFinish : courseLength,
+    centerline, start, startIndex, laps: oneWay ? 1 : laps,
+    finish: oneWay ? Math.round(count * oneWayFinish) : startIndex + 10, itemRows, boostRows, jumpRows, oneWay,
+    jump, elevated: profile !== flatSurface, bounds: { minX, maxX, minZ, maxZ },
     coursePoint, nearestRoad, roadDistance, wallSegments, mapPoint, profile, surfacePoint, widthAt,
   };
 }
@@ -285,6 +288,24 @@ export const tracks = {
     id: 'summit', name: 'Summit Circuit', tagline: 'Switchbacks, vertical climbs and a high U-turn',
     anchors: summitAnchors, startIndex: 27, laps: 2, itemRows: [0.06, 0.24, 0.39, 0.57, 0.72, 0.88],
     profile: summitSurface, narrowed: [[0.18, 0.30], [0.63, 0.73], [0.79, 0.92]], jump: summitJump,
+  }),
+  neon: buildTrack({
+    id: 'neon', name: 'Neon Divide',
+    tagline: 'A one-way midnight run through the vertical city',
+    // The return segment is omitted by the city scene. It only keeps the shared
+    // spline sampler stable while the race itself runs from index 0 to the far finish.
+    anchors: [
+      [-360, -300], [-250, -300], [-145, -274], [-68, -205], [-142, -118], [-42, -46],
+      [86, -62], [170, 12], [92, 104], [-38, 82], [-122, 162], [-42, 256],
+      [98, 286], [200, 226], [286, 132], [366, 55], [452, 82], [520, 174],
+      [474, 288], [354, 348], [242, 304], [176, 212], [238, 126], [334, 150],
+      [382, 236], [332, 414], [178, 470], [20, 430], [-116, 350], [-246, 388],
+      [-336, 488], [-452, 528],
+    ],
+    startIndex: 0, oneWay: true, oneWayFinish: 0.83,
+    itemRows: [0.12, 0.30, 0.48, 0.67, 0.84],
+    boostRows: [0.07, 0.22, 0.42, 0.58, 0.76, 0.91],
+    jumpRows: [0.36, 0.72],
   }),
 };
 export const trackList = Object.values(tracks);

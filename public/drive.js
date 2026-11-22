@@ -164,6 +164,8 @@ function reset(car, index) {
     trickBuffer: 0, trickCount: 0, trickQueued: false, lastBrakeTap: car.controls.brakeTap ?? 0,
     hoverHop: 0, hoverEntered: false,
     effectTime: 0, surface: 'ON TRACK', surfaceColor: '',
+    boostPadAt: -1,
+    jumpPadAt: -1, jumpTime: 0, jumpHeight: 0,
     item: null, roulette: null, itemUses: 0, nextItemUse: 0, boomerangOut: false, botNextUse: 0,
     fireQueued: false, lastShellShot: car.controls.shellShot ?? 0, wallContact: false,
     canReset: false, resetQueued: false, resetCooldown: 0, lastReset: car.controls.resetRequest ?? 0,
@@ -243,8 +245,10 @@ function createViews(players) {
   startingGrid.forEach(reset);
 }
 function coursePath(item) {
-  return item.centerline.map(([x, , z], i) =>
-    (i ? 'L' : 'M') + item.mapPoint(x, z).map(value => value.toFixed(1)).join(' ')).join(' ') + ' Z';
+  const route = item.oneWay ? item.centerline.slice(0, item.finish + 1) : item.centerline;
+  return route.map(([x, , z], i) =>
+    (i ? 'L' : 'M') + item.mapPoint(x, z).map(value => value.toFixed(1)).join(' ')).join(' ') +
+    (item.oneWay ? '' : ' Z');
 }
 function drawMap() {
   document.querySelector('#map-course').setAttribute('d', coursePath(track));
@@ -346,7 +350,7 @@ const trackCards = new Map(trackList.map(item => {
   button.setAttribute('role', 'radio');
   button.innerHTML = `<svg viewBox="0 0 120 100" aria-hidden="true"><path d="${coursePath(item)}"/></svg>` +
     `<span><strong>${item.name}</strong><em>${item.tagline}</em>` +
-    `<small>${Math.round(item.courseLength)} m per lap · ${item.laps} laps</small></span>`;
+    `<small>${Math.round(item.courseLength)} m ${item.oneWay ? 'point-to-point run' : 'per lap · ' + item.laps + ' laps'}</small></span>`;
   button.addEventListener('click', () => host('track', { track: item.id }));
   trackPicker.append(button);
   return [item.id, button];
@@ -611,6 +615,30 @@ function physics(car, dt, pace) {
   advanceHoverEntry(car, hover, dt);
   car.wheelFold += (hover - car.wheelFold) * (1 - Math.exp(-7 * dt));
   const onRoad = distance < track.widthAt(road.index) + 0.45;
+  // Neon Divide's cyan lanes are fixed ground boosts. Each pad can trigger
+  // once while the kart is crossing it, then is available again at the next pad.
+  const pad = track.oneWay && track.boostRows.findIndex(row =>
+    Math.abs(road.index - track.finish * row) < 4 && distance < track.widthAt(road.index) * 0.82);
+  if (pad !== undefined && pad >= 0 && pad !== car.boostPadAt && !finished) {
+    car.boostPadAt = pad;
+    car.boostTime = Math.max(car.boostTime, 0.7);
+    car.boostColor = '#57eaff';
+    car.speed = Math.max(car.speed, 27);
+  } else if (pad === undefined || pad < 0) {
+    car.boostPadAt = -1;
+  }
+  const ramp = track.oneWay && track.jumpRows.findIndex(row =>
+    Math.abs(road.index - track.finish * row) < 3 && distance < track.widthAt(road.index) * 0.72);
+  if (ramp !== undefined && ramp >= 0 && ramp !== car.jumpPadAt && car.speed > 12 && !finished) {
+    car.jumpPadAt = ramp;
+    car.jumpTime = 0.48;
+    car.boostTime = Math.max(car.boostTime, 0.55);
+    car.boostColor = '#ff67db';
+  } else if (ramp === undefined || ramp < 0) {
+    car.jumpPadAt = -1;
+  }
+  car.jumpTime = Math.max(0, car.jumpTime - dt);
+  car.jumpHeight = car.jumpTime > 0 ? Math.sin(Math.PI * (1 - car.jumpTime / 0.48)) * 1.55 : 0;
   const driftHeld = throttle > 0 && (driftButton || keyboardDrift);
   const canDrift = !bullet && !car.flight && car.speed > 7;
   const mushroomBoost = car.boostTime > 0 &&
@@ -854,7 +882,7 @@ function carMesh(car) {
   const hover = car.wheelFold;
   const hopPhase = 1 - car.hoverHop / hoverHopSeconds;
   const hopLift = car.hoverHop > 0 ? Math.sin(Math.PI * hopPhase) * 0.56 : 0;
-  const hoverLift = hover * (0.19 + 0.035 * Math.sin(car.effectTime * 7)) + hopLift;
+  const hoverLift = hover * (0.19 + 0.035 * Math.sin(car.effectTime * 7)) + hopLift + (car.jumpHeight ?? 0);
   const pitch = car.flight ? Math.atan2(car.flight.rise, Math.max(1, car.speed)) * 0.46 + car.flight.pitch * 0.48 :
     Math.atan((surface.slopeX ?? 0) * sin);
   const pitchSin = Math.sin(pitch), pitchCos = Math.cos(pitch);
@@ -1438,7 +1466,9 @@ function hud() {
         }
       }
       setText(car.placeLabel, (index + 1) + (['st', 'nd', 'rd'][index] ?? 'th'));
-      setText(car.lapLabel, car.finishedAt === null ? 'Lap ' + Math.min(track.laps, car.lap + 1) + '/' + track.laps : 'Finished');
+      setText(car.lapLabel, car.finishedAt === null ? (track.oneWay ? 'RUN ' +
+        Math.min(100, Math.round(car.progress / track.finish * 100)) + '%' :
+        'Lap ' + Math.min(track.laps, car.lap + 1) + '/' + track.laps) : 'Finished');
       const roulette = car.roulette;
       const badge = roulette ? itemChoices[rouletteFrame(roulette) % itemChoices.length] :
         itemInfo[car.item];
