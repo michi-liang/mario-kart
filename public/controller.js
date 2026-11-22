@@ -104,6 +104,7 @@ function queueCommand(command) {
 }
 for (const button of arrowButtons) button.addEventListener('click', () => queueCommand(button.dataset.arrow));
 confirmPick.addEventListener('click', () => queueCommand('confirm'));
+document.querySelector('#fire-shell').addEventListener('click', () => queueCommand('fire'));
 
 for (const [button, sources] of pressed) {
   function setHeld(source, down) {
@@ -161,7 +162,7 @@ function showRoom(state) {
   lobby.hidden = racing;
   race.hidden = !racing;
   arrows.hidden = !selecting;
-  if (!selecting) commands.length = 0;
+  if (!selecting && !racing) commands.length = 0;
   for (const button of arrowButtons) button.disabled = state.ready;
   confirmPick.hidden = !selecting;
   const tiltSlot = racing ? raceTilt : lobbyTilt;

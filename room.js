@@ -32,6 +32,7 @@ export function createRoom() {
     }
     if (action !== 'start' || active.some(seat => !seat.ready)) return false;
     racingSeats = active.length ? active : [{ number: 1, character: soloPick, keyboard: true }];
+    for (const seat of racingSeats) seat.shellShot = 0;
     phase = 'racing';
     round++;
     return true;
@@ -41,7 +42,7 @@ export function createRoom() {
     const { steer, throttle, brake = false, command, sequence } = data || {};
     if (!/^[a-f0-9]{24}$/.test(id ?? '') || ![steer, throttle].every(Number.isFinite) ||
       typeof brake !== 'boolean' || (command !== undefined &&
-        (typeof command !== 'string' || (!Object.hasOwn(moves, command) && command !== 'confirm') ||
+        (typeof command !== 'string' || (!Object.hasOwn(moves, command) && command !== 'confirm' && command !== 'fire') ||
           !Number.isSafeInteger(sequence) || sequence < 1))) {
       return { status: 400, error: 'Invalid controller input' };
     }
@@ -63,11 +64,13 @@ export function createRoom() {
       if (selecting && command === 'confirm') {
         seat.ready = !seat.ready && !contestants(now).some(other =>
           other !== seat && other.ready && other.character === seat.character);
-      } else if (selecting && !seat.ready) {
+      } else if (selecting && !seat.ready && Object.hasOwn(moves, command)) {
         const [dx, dy] = moves[command];
         const col = (seat.character % 4 + dx + 4) % 4;
         const row = (Math.floor(seat.character / 4) + dy + 4) % 4;
         seat.character = row * 4 + col;
+      } else if (command === 'fire' && phase === 'racing' && racingSeats.includes(seat)) {
+        seat.shellShot = sequence;
       }
     }
     const inRace = phase === 'racing' && racingSeats.includes(seat);
@@ -85,7 +88,8 @@ export function createRoom() {
       const live = connected(seat, now);
       const controlsFresh = now - seat.lastSeen < 600;
       return { number: seat.number, character: seat.character, ready: !!seat.ready, connected: live,
-        keyboard: !!seat.keyboard, ...(phase === 'racing' && controlsFresh ? seat.controls : idle) };
+        keyboard: !!seat.keyboard, shellShot: seat.shellShot ?? 0,
+        ...(phase === 'racing' && controlsFresh ? seat.controls : idle) };
     });
     return { phase, mode, round, players, soloPick };
   }
