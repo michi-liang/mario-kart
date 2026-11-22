@@ -20,26 +20,31 @@ export const itemInfo = {
   gold: { label: 'Golden Mushroom', color: goldenMushroomColor, icon: 'gold', uses: 1 },
   bullet: { label: 'Bullet Bill', color: '#94bcff', icon: 'bullet', uses: 1 },
   star: { label: 'Rainbow Star', color: '#ffed71', icon: 'star', uses: 1 },
+  ghost: { label: 'Ink Ghost', color: '#d5b6ff', icon: 'ghost', uses: 1 },
+  plant: { label: 'Chomper Plant', color: '#97ef89', icon: 'plant', uses: 1 },
 };
 
 // Interpolate between four points on the grid so each place has its own odds.
 const rankWeights = [
-  [42, 36, 12, 0, 0, 0, 0, 0, 10, 0, 0, 0],
-  [12, 15, 22, 17, 6, 4, 6, 8, 6, 2, 0, 2],
-  [3, 5, 12, 20, 5, 9, 6, 7, 5, 10, 9, 9],
-  [0, 1, 6, 12, 3, 15, 4, 4, 4, 16, 20, 15],
+  [37, 34, 11, 0, 0, 0, 0, 0, 14, 0, 0, 0, 0, 4],
+  [9, 13, 18, 18, 5, 3, 4, 7, 5, 3, 1, 2, 4, 8],
+  [1, 5, 10, 2, 4, 11, 6, 8, 4, 11, 10, 9, 8, 11],
+  [0, 1, 3, 1, 2, 14, 1, 2, 1, 14, 22, 17, 10, 12],
 ];
+const rankBreaks = [0, 3 / 11, 6 / 11, 1];
 const itemTypes = Object.keys(itemInfo);
 const soloWeights = itemTypes.map((_, index) => rankWeights.reduce((sum, row) => sum + row[index], 0));
 const rollSeconds = 190 / 60;
 const wallClearance = wallOffset - 0.65;
+const heldShields = new Set(['red', 'green', 'banana']);
 
 export function rollItem(place, fieldSize, random = Math.random) {
-  const rank = (place - 1) * (rankWeights.length - 1) / Math.max(1, fieldSize - 1);
-  const lower = rankWeights[Math.floor(rank)];
-  const upper = rankWeights[Math.ceil(rank)];
-  const blend = rank % 1;
-  const weights = fieldSize < 2 ? soloWeights : lower.map((weight, i) => weight + (upper[i] - weight) * blend);
+  const rank = (place - 1) / Math.max(1, fieldSize - 1);
+  const upper = rankBreaks.findIndex((limit, index) => index > 0 && rank <= limit);
+  const lower = upper - 1;
+  const blend = (rank - rankBreaks[lower]) / (rankBreaks[upper] - rankBreaks[lower]);
+  const weights = fieldSize < 2 ? soloWeights :
+    rankWeights[lower].map((weight, i) => weight + (rankWeights[upper][i] - weight) * blend);
   let ticket = random() * weights.reduce((sum, weight) => sum + weight, 0);
   for (const [index, weight] of weights.entries()) {
     if (ticket < weight) return itemTypes[index];
@@ -78,6 +83,11 @@ export function rearThreat(car, objects) {
 
 function spinOut(car, type, duration = bananaSpinTime) {
   if (car.spinTime > 0 || car.finishedAt !== null || car.powerTime > 0) return;
+  if ((type === 'red' || type === 'green') && heldShields.has(car.item)) {
+    car.item = null;
+    car.itemUses = 0;
+    return;
+  }
   const { label, color } = itemInfo[type];
   car.spinTime = duration;
   car.speed *= 0.48;
@@ -95,24 +105,35 @@ function boostMushroom(car, color) {
   car.boostCount = (car.boostCount ?? 0) + 1;
 }
 
-function firstTarget(item, cars, travel, radius = 1.6) {
-  let target;
+function contactDistance(item, target, radius) {
+  const x = target.x - item.x;
+  const z = target.z - item.z;
+  const along = x * item.dx + z * item.dz;
+  const across = x * item.dz - z * item.dx;
+  const reach = radius ** 2 - across ** 2;
+  if (reach < 0) return Infinity;
+  const intersect = Math.sqrt(reach);
+  return along + intersect < 0 ? Infinity : Math.max(0, along - intersect);
+}
+
+function firstTarget(item, cars, travel, radius = 1.6, bananas = [], removed) {
+  let target = null;
   let firstHit = travel;
   for (const car of cars) {
     if (car.number === item.owner || car.finishedAt !== null || item.hits?.has(car.number)) continue;
-    const x = car.x - item.x;
-    const z = car.z - item.z;
-    const along = x * item.dx + z * item.dz;
-    const across = x * item.dz - z * item.dx;
-    const reach = radius ** 2 - across ** 2;
-    if (reach < 0) continue;
-    const intersect = Math.sqrt(reach);
-    const entry = Math.max(0, along - intersect);
-    if (along + intersect < 0 || entry > firstHit) continue;
+    const entry = contactDistance(item, car, radius);
+    if (entry > firstHit) continue;
     firstHit = entry;
     target = car;
   }
-  return target;
+  for (const banana of bananas) {
+    if (removed.has(banana)) continue;
+    const entry = contactDistance(item, banana, 1.25);
+    if (entry > firstHit) continue;
+    firstHit = entry;
+    target = banana;
+  }
+  return target === null ? null : { target, distance: firstHit };
 }
 
 function wallDistance(track, item, travel) {
@@ -127,13 +148,18 @@ function wallDistance(track, item, travel) {
   return inside;
 }
 
-function bounce(track, item, cars, travel) {
+function stopAtImpact(hit, type, removed, duration) {
+  if (hit.target.type === 'banana') removed.add(hit.target);
+  else spinOut(hit.target, type, duration);
+}
+
+function bounce(track, item, cars, travel, bananas, removed) {
   for (let i = 0; i < 4 && travel > 0.001; i++) {
     const wall = wallDistance(track, item, travel);
     const distance = wall ?? travel;
-    const hit = firstTarget(item, cars, distance);
+    const hit = firstTarget(item, cars, distance, 1.6, bananas, removed);
     if (hit) {
-      spinOut(hit, item.type, item.type === 'fire' ? 0.55 : 0.9);
+      stopAtImpact(hit, item.type, removed, item.type === 'fire' ? 0.55 : 0.9);
       return false;
     }
     item.x += item.dx * distance;
@@ -183,13 +209,18 @@ export function createTrackItems(track, random = Math.random) {
     for (const car of cars) {
       if (car.number !== owner && Math.hypot(car.x - x, car.z - z) <= radius) spinOut(car, type, 1.15);
     }
-    if (shield) {
-      objects = objects.filter(item => {
-        if (Math.hypot(item.x - x, item.z - z) > radius) return true;
-        if (item.type === 'boomerang') cars.find(car => car.number === item.owner).boomerangOut = false;
-        return false;
-      });
-    }
+    if (shield) clearObjects(cars, item => Math.hypot(item.x - x, item.z - z) <= radius);
+  }
+
+  function clearObjects(cars, shouldRemove) {
+    objects = objects.filter(item => {
+      if (!shouldRemove(item)) return true;
+      if (item.type === 'boomerang') {
+        const owner = cars.find(car => car.number === item.owner);
+        if (owner) owner.boomerangOut = false;
+      }
+      return false;
+    });
   }
 
   function use(car, now, positions, backwards = false) {
@@ -212,6 +243,19 @@ export function createTrackItems(track, random = Math.random) {
     car.nextItemUse = now + 0.22;
     if (type === 'mushroom') {
       boostMushroom(car, mushroomColor);
+      return;
+    }
+    if (type === 'ghost') {
+      for (const [index, rival] of positions.entries()) {
+        if (rival === car || rival.finishedAt !== null || rival.powerTime > 0) continue;
+        const rank = index / Math.max(1, positions.length - 1);
+        rival.inkUntil = Math.max(rival.inkUntil ?? 0, now + 6 - 4.4 * rank);
+      }
+      return;
+    }
+    if (type === 'plant') {
+      car.plantUntil = now + 6;
+      car.nextChompAt = now;
       return;
     }
     if (type === 'bullet' || type === 'star') {
@@ -246,7 +290,7 @@ export function createTrackItems(track, random = Math.random) {
     objects.push(item);
   }
 
-  function updateObject(item, now, positions, dt) {
+  function updateObject(item, now, positions, dt, bananas, removed) {
     const { type, x, z } = item;
     const age = now - item.born;
     if (type === 'bomb') {
@@ -270,7 +314,7 @@ export function createTrackItems(track, random = Math.random) {
       }
       if (returning) aim(item, owner.x, owner.z, 13, dt);
       const travel = (returning ? 48 : 42) * dt;
-      const hit = firstTarget(item, positions, travel);
+      const hit = firstTarget(item, positions, travel)?.target;
       if (hit) {
         item.hits.add(hit.number);
         spinOut(hit, type, 0.65);
@@ -280,7 +324,9 @@ export function createTrackItems(track, random = Math.random) {
       return true;
     }
     if (now >= item.expires) return false;
-    if (type === 'green' || type === 'fire') return bounce(track, item, positions, (type === 'green' ? 42 : 37) * dt);
+    if (type === 'green' || type === 'fire') {
+      return bounce(track, item, positions, (type === 'green' ? 42 : 37) * dt, type === 'green' ? bananas : [], removed);
+    }
     if (type === 'banana') {
       if (now < item.landAt) {
         const travel = 23 * dt;
@@ -307,14 +353,20 @@ export function createTrackItems(track, random = Math.random) {
     }
     const travel = (type === 'blue' ? 52 : 44) * dt;
     if (type === 'blue') {
-      if (target && firstTarget(item, [target], travel, 2.7)) {
+      const hit = target && firstTarget(item, [target], travel, 2.7);
+      for (const banana of bananas) {
+        if (!removed.has(banana) && contactDistance(item, banana, 1.25) <= (hit?.distance ?? travel)) {
+          removed.add(banana);
+        }
+      }
+      if (hit) {
         blast(type, item.owner, target.x, target.z, now, positions, 6.5);
         return false;
       }
     } else {
       const wall = wallDistance(track, item, travel);
-      const hit = firstTarget(item, positions, wall ?? travel);
-      if (hit) spinOut(hit, type, 1);
+      const hit = firstTarget(item, positions, wall ?? travel, 1.6, bananas, removed);
+      if (hit) stopAtImpact(hit, type, removed, 1);
       if (wall !== null || hit) return false;
     }
     item.x += item.dx * travel;
@@ -324,14 +376,43 @@ export function createTrackItems(track, random = Math.random) {
 
   function update(now, positions, dt) {
     effects = effects.filter(effect => effect.expires > now);
+    const bananas = objects.filter(item => item.type === 'banana' && item.landAt <= now && item.expires > now);
+    const removed = new Set();
     objects = objects.filter(item => {
+      if (removed.has(item)) return false;
+      // Resolve shells before checking whether a landed peel trips a kart.
+      if (item.type === 'banana' && item.landAt <= now && item.expires > now) return true;
       const { x, z } = item;
-      const active = updateObject(item, now, positions, dt);
+      const active = updateObject(item, now, positions, dt, bananas, removed);
       item.vx = (item.x - x) / dt;
       item.vz = (item.z - z) / dt;
       return active;
     });
+    if (bananas.length) {
+      objects = objects.filter(item => !removed.has(item) &&
+        (item.type !== 'banana' || item.landAt > now || updateObject(item, now, positions, dt, bananas, removed)));
+    }
     for (const [index, car] of positions.entries()) {
+      if (car.plantUntil > now && now >= car.nextChompAt && car.finishedAt === null && car.spinTime <= 0) {
+        car.nextChompAt = now + 0.8;
+        car.chompAt = now;
+        const dx = Math.sin(car.yaw), dz = Math.cos(car.yaw);
+        const inBite = target => {
+          const x = target.x - car.x, z = target.z - car.z;
+          return x * dx + z * dz > 0 && x * x + z * z < 5.5 ** 2 && Math.abs(x * dz - z * dx) < 2.6;
+        };
+        for (const rival of positions) {
+          if (Math.abs((rival.flight?.y ?? 0) - (car.flight?.y ?? 0)) < 1.8 && inBite(rival)) {
+            spinOut(rival, 'plant', 0.6);
+          }
+        }
+        if (!car.flight) clearObjects(positions, item => inBite(item));
+        if (car.boostTime <= 0 && car.speed >= 4 && !car.flight) {
+          car.boostColor = itemInfo.plant.color;
+          car.boostTime = 0.3;
+          car.speed = Math.min(30, car.speed + 3);
+        }
+      }
       if (car.goldUntil && now >= car.goldUntil) {
         car.goldUntil = 0;
         car.item = null;
@@ -352,7 +433,7 @@ export function createTrackItems(track, random = Math.random) {
         car.nextItemUse = now + (car.bot ? 0.85 : 0.05);
         car.roulette = null;
       }
-      if (car.item || car.roulette || car.boomerangOut || car.spinTime > 0 || car.powerTime > 0) continue;
+      if (car.item || car.roulette || car.boomerangOut || car.spinTime > 0 || car.powerTime > 0 || car.plantUntil > now) continue;
       for (const row of rows) {
         if (Math.hypot(row.x - car.x, row.z - car.z) > halfRoad + 2) continue;
         const box = row.boxes.find(box => box.availableAt <= now && Math.hypot(box.x - car.x, box.z - car.z) < 2.15);

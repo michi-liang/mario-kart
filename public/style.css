@@ -231,6 +231,20 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
   padding: clamp(16px, 3vw, 26px); background: #192b4af2; text-align: center; }
 #pairing h2 { font-size: clamp(22px, 3vw, 30px); }
 #pairing #copy { min-height: 34px; }
+#pairing:has(.seats[data-count="4"]) { width: min(100%, 800px); }
+.pair-grid { --qr-size: clamp(104px, 24vw, 216px); position: relative; display: grid; width: 100%; gap: 8px; }
+.pair-grid .qr { grid-area: 1 / 1; align-self: center; justify-self: center; width: var(--qr-size); z-index: 1; }
+.pair-grid .seats { grid-row: 2; }
+.pair-grid .seats[data-count="4"] {
+  grid-area: 1 / 1;
+  grid-template-columns: minmax(0, 1fr) var(--qr-size) minmax(0, 1fr);
+  grid-template-areas: "p1 . p2" "p3 . p4";
+  min-height: calc(var(--qr-size) + 12px);
+}
+.seats[data-count="4"] .join-seat:nth-child(1) { grid-area: p1; }
+.seats[data-count="4"] .join-seat:nth-child(2) { grid-area: p2; }
+.seats[data-count="4"] .join-seat:nth-child(3) { grid-area: p3; }
+.seats[data-count="4"] .join-seat:nth-child(4) { grid-area: p4; }
 #continue-to-tracks { width: 100%; }
 .selection-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .selection-header button { padding-inline: 16px; }
@@ -266,7 +280,6 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
 .track-card.selected { border-color: var(--lime); box-shadow: inset 0 0 0 1px var(--lime); }
 .pick-markers { position: absolute; top: 3px; left: 3px; right: 3px; display: flex; gap: 2px; flex-wrap: wrap; }
 .seats { display: grid; gap: 7px; width: 100%; }
-.seats[data-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .join-seat { display: grid; place-items: center; min-height: 45px; padding: 6px; border: 1px solid #a4c4ef75;
   border-radius: 9px; background: var(--seat, #263d65); color: #d8e5fa; font-size: 13px; }
 .join-seat strong { color: #112048; font-size: 17px; }
@@ -295,6 +308,12 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .views .viewport { min-width: 0; overflow: hidden; }
+.ink-splash { position: absolute; inset: 23% 22%; pointer-events: none; }
+.ink-splash svg { display: block; width: 100%; height: 100%; }
+.launch-feedback { position: absolute; bottom: 15%; inset-inline: 0; width: max-content; margin: auto;
+  border-radius: 6px; padding: 5px 9px; background: #193330; color: #c1ffbe;
+  font-size: clamp(10px, 1.7vw, 20px); font-weight: 900; pointer-events: none; }
+.launch-feedback[data-result="burnout"] { background: #552c31; color: #ffd0b8; }
 .kart-recovery { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
   min-height: 31px; padding: 3px 8px; font-size: clamp(10px, 1.3vw, 14px); white-space: nowrap; }
 .views .speed { top: auto; bottom: 9px; left: auto; right: 8px; min-width: 0; padding: 4px 8px; }

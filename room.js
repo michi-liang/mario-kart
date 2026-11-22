@@ -49,6 +49,7 @@ export function createRoom() {
       return true;
     }
     if (phase === 'pairing' && action === 'choose-track') {
+      if (mode === 'play' && contestants(now).length === 0) return false;
       phase = 'track-selection';
       return true;
     }
@@ -71,7 +72,7 @@ export function createRoom() {
       soloPick = character;
       return true;
     }
-    if (action !== 'start' || active.some(seat => !seat.ready)) return false;
+    if (action !== 'start' || (mode === 'play' && active.length === 0) || active.some(seat => !seat.ready)) return false;
     racingSeats = active.length ? active : [{ number: 1, character: soloPick, keyboard: true }];
     startRace();
     return true;

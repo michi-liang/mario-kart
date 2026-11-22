@@ -96,8 +96,16 @@ export function createRaceAudio() {
     if (muted || context?.state !== 'running') return;
     const at = context.currentTime;
     switch (name) {
-      case 'count': tone(at, 440, 0.19, 0.3, 'square'); break;
-      case 'go': tone(at, 880, 0.37, 0.3, 'square', 1046); break;
+      case 'count':
+        tone(at, 520, 0.17, 0.35, 'square');
+        tone(at + 0.014, 780, 0.105, 0.12, 'triangle');
+        break;
+      case 'go':
+        tone(at, 880, 0.38, 0.33, 'square', 1046);
+        tone(at + 0.055, 1320, 0.27, 0.18, 'triangle', 1568);
+        break;
+      case 'chomp': tone(at, 210, 0.15, 0.20, 'square', 80); break;
+      case 'ink': tone(at, 160, 0.23, 0.22, 'sine', 60); break;
       case 'box': tone(at, 520, 0.18, 0.22, 'sine', 1046); break;
       case 'roll': tone(at, 950, 0.045, 0.085, 'triangle', 640); break;
       case 'ready':
@@ -135,7 +143,7 @@ export function createRaceAudio() {
     }
     if (muted || context?.state !== 'running') return;
     const now = context.currentTime;
-    const speed = Math.abs(car?.speed ?? 0);
+    const speed = Math.max(Math.abs(car?.speed ?? 0), playing ? 0 : Math.min(14, (car?.launchHold ?? 0) * 9));
     engine.frequency.setTargetAtTime(38 + speed * 3.3, now, 0.08);
     engineGain.gain.setTargetAtTime(car ? 0.034 + Math.min(speed / 27, 1) * 0.033 : 0, now, 0.12);
     const mode = playSummit ? 'summit' : playing ? 'race' : lobby ? 'lobby' : '';

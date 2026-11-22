@@ -1,12 +1,15 @@
 import { roadTopSpeed } from './race.js';
 
 const headingError = (target, yaw) => Math.atan2(Math.sin(target - yaw), Math.cos(target - yaw));
+const paceBySeat = [0.98, 0.87, 1.04, 0.81, 0.94, 0.86, 1.02, 0.79, 0.91, 0.84, 0.99, 0.88];
+export const botPace = number => paceBySeat[(number - 1) % paceBySeat.length];
 
 export function botControls(track, car, road, pace) {
   const index = Math.floor(road.index);
   const style = Math.sin(car.number * 2.4);
-  const lane = road.distance > 6 ? 0 : style * 1.6;
-  const lookAhead = (car.speed > 16 ? 6 : 4) + (car.number % 3) - 1;
+  const lane = road.distance > 6 ? 0 : style * 2.4;
+  const skill = botPace(car.number);
+  const lookAhead = (car.speed > 16 ? 6 : 4) + (car.number % 4) - 1;
   const [x, , z] = track.coursePoint(index + lookAhead, lane);
   const angle = headingError(Math.atan2(x - car.x, z - car.z), car.yaw);
   const [nearX, , nearZ] = track.coursePoint(index + 5);
@@ -14,11 +17,11 @@ export function botControls(track, car, road, pace) {
   const curve = Math.abs(headingError(Math.atan2(farX - nearX, farZ - nearZ),
     Math.atan2(road.forwardX, road.forwardZ)));
   const topSpeed = roadTopSpeed * pace;
-  const cornerPenalty = Math.max(0, curve - 0.12) * (10 + style * 1.4) + Math.max(0, Math.abs(angle) - 0.13) * 8;
+  const cornerPenalty = Math.max(0, curve - 0.12) * (10 + (1 - skill) * 24) + Math.max(0, Math.abs(angle) - 0.13) * 8;
   const desiredSpeed = Math.max(10, topSpeed - cornerPenalty);
   const fullThrottle = cornerPenalty === 0 || (car.boostTime > 0 && cornerPenalty < 4);
   return {
-    steer: Math.max(-1, Math.min(1, angle * (2.3 - style * 0.16))),
+    steer: Math.max(-1, Math.min(1, angle * (2.15 + (skill - 0.90) * 2 + style * 0.12))),
     throttle: fullThrottle || car.speed < desiredSpeed ? 1 : 0,
     brake: car.speed > desiredSpeed + 3,
   };
@@ -40,9 +43,9 @@ export function useBotItem(car, positions, now) {
   const useful = car.item === 'blast' ? nearby.some(other => Math.hypot(other.x - car.x, other.z - car.z) < 7)
     : car.item === 'blue' || car.item === 'red' ? rivalAhead
     : car.item === 'mushroom' || car.item === 'gold' ? car.speed > 12 && !car.wallContact
-    : car.item === 'bullet' || car.item === 'star' ? !car.wallContact
+    : ['bullet', 'star', 'ghost', 'plant'].includes(car.item) ? !car.wallContact
     : car.item === 'banana' || linedUp;
-  if (!useful && now < car.nextItemUse + 6.5 + (car.number % 4) * 0.45) return false;
-  car.botNextUse = now + 0.62 + (car.number % 3) * 0.13;
+  if (!useful && now < car.nextItemUse + 5.5 + (1.04 - botPace(car.number)) * 14) return false;
+  car.botNextUse = now + 0.55 + (1.04 - botPace(car.number)) * 2.1;
   return true;
 }

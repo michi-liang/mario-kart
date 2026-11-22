@@ -1,13 +1,14 @@
 import { trackList, tracks } from './track.js';
 import {
   advanceBullet, advanceGlider, advanceHoverEntry, advanceProgress, catchUpFactor, countdownSeconds, grassSpeedFactor,
-  hitWall, hoverBoostColor, hoverHopSeconds, hoverSpinSeconds, kartScale, offCourse, recoveryPose, resetProgress, roadTopSpeed,
+  hitWall, hoverBoostColor, hoverHopSeconds, hoverSpinSeconds, kartScale, launchBoostColor, launchFromGrid,
+  offCourse, recoveryPose, resetProgress, roadTopSpeed,
   trickBoostColor, trickBoostSpeed, trickSpinSeconds,
   resolveKartCollisions, standings, updateWrongWay, wallClearance,
 } from './race.js';
 import { headDetails, mix, playerColors, roster } from './roster.js';
 import { box, buildScene } from './scenery.js';
-import { botControls, useBotItem } from './bots.js';
+import { botControls, botPace, useBotItem } from './bots.js';
 import { createRaceAudio } from './audio.js';
 import { createDepthLayer } from './depth.js';
 import {
@@ -63,11 +64,20 @@ const raceStart = countdownStart + countdownSeconds;
 const itemChoices = Object.values(itemInfo);
 const rainbowColors = ['#ff637d', '#ffd454', '#a7f565', '#64edff', '#9c9cff', '#f795ff'];
 const powerIcons = {
+  ghost: '<path fill="#d5b6ff" stroke="#64548e" stroke-width="3" d="M11 55V29a21 21 0 1 1 42 0v26l-9-7-6 8-6-8-6 8-7-8Z"/><path fill="#211c35" d="M20 27a4 5 0 1 0 8 0 4 5 0 1 0-8 0m16 0a4 5 0 1 0 8 0 4 5 0 1 0-8 0m-9 11c4-4 7-4 10 0 2 4-12 4-10 0Z"/>',
+  plant: '<path fill="#58a74a" d="M26 61c2-12 5-21 7-32h7l-4 32Z"/><path fill="#75d66b" d="M32 55C13 59 7 51 5 42c15-2 26 3 27 13Z"/><path fill="#a6486a" stroke="#6b3659" stroke-width="3" d="M9 26C14 6 39 1 54 15l-12 9-6 3 9 3 13 4C48 51 17 47 9 26Z"/><path fill="#fff2d7" d="m42 24 12-7-2 10-10 2 11 4-8 5Z"/><circle cx="23" cy="21" r="4" fill="#ffe992"/>',
   banana: '<g stroke="#aa6228" stroke-width="2" stroke-linejoin="round"><path fill="#e9982c" d="M29 28C23 39 17 43 4 45c6 5 16 7 26-1l4-9Z"/><path fill="#ffe46a" d="M33 30c9 10 16 12 27 9-2 8-11 13-21 8l-8-8Z"/><path fill="#ffc53b" d="M33 10c-9 5-11 17-8 26 3 8 1 15-5 21 10 1 18-6 20-15 2-11-8-16-2-30Z"/><path fill="#744529" d="m32 10 2-6 6 3-2 6Z"/></g><path d="M28 45c5-8 2-12 1-18" fill="none" stroke="#fff3a6" stroke-width="3" stroke-linecap="round"/>',
   gold: '<path fill="#fff1aa" d="M17 33h30v13a15 15 0 0 1-30 0Z"/><path fill="#f6a51b" stroke="#ffdc59" stroke-width="3" d="M6 32a26 26 0 0 1 52 0c0 13-52 13-52 0Z"/><path fill="#fff1aa" d="m32 12 3 6 7 1-5 4 1 7-6-3-6 3 1-7-5-4 7-1Z"/><path stroke="#5b371b" stroke-width="3" stroke-linecap="round" d="M27 45v4m10-4v4"/>',
   bullet: '<path fill="#eb8145" d="m17 45-9 10 1-14-6-4 14-3Z"/><path fill="#445476" stroke="#adc5e9" stroke-width="2" d="M14 21h25c10 0 18 6 21 11-3 5-11 11-21 11H14Z"/><path fill="#82e6fd" d="M37 26h12l5 6-5 3H37Z"/><path stroke="#e9b566" stroke-width="3" d="M21 21v22"/>',
   star: '<path d="m32 5 8 17 19 3-13 14 3 19-17-8-17 8 3-19L5 25l19-3Z" fill="#ffed71" stroke="#fff7cb" stroke-width="2"/><path d="m9 27 15-3 8-17v23L19 40Z" fill="#ff8fba"/><path d="m32 30 8-6 16 3-13 12 3 16-14-7Z" fill="#6deaff"/><path d="M27 32v7m10-7v7" stroke="#47305e" stroke-width="3" stroke-linecap="round"/>',
 };
+const inkSplash = `<svg viewBox="0 0 160 100" aria-hidden="true">
+  <g fill="#120c22" stroke="#342446" stroke-width="1">
+    <path d="M23 45C13 34 28 29 39 33C52 39 45 18 57 16C68 14 66 34 76 30C86 26 87 8 97 13C107 19 96 31 108 33C117 35 128 21 136 28C142 37 124 42 130 48C136 55 149 52 146 63C141 72 124 60 117 65C110 70 125 81 113 86C102 91 100 73 89 75C78 76 83 92 73 90C64 89 68 74 58 76C47 79 41 91 33 84C27 77 41 70 37 63C32 56 12 62 12 54C12 49 21 49 23 45Z"/>
+    <ellipse cx="25" cy="23" rx="4.2" ry="3.5"/><ellipse cx="127" cy="16" rx="3.2" ry="2.4"/>
+    <ellipse cx="142" cy="82" rx="4" ry="3"/><ellipse cx="19" cy="74" rx="3" ry="4"/>
+  </g>
+</svg>`;
 const boomBoxIcon = `<svg viewBox="0 0 64 64" aria-hidden="true">
   <g stroke="#3a2347" stroke-width="2" stroke-linejoin="round">
     <path fill="#efc7ff" d="M7 34 32 22l25 12-25 13Z"/>
@@ -135,17 +145,19 @@ document.addEventListener('fullscreenchange', fullscreenState);
 
 function reset(car, index) {
   const column = index % 6;
-  const row = track.startIndex - Math.floor(index / 6) * 3;
-  const [gridX, , gridZ] = track.coursePoint(row, cars.length > 1 ? (column - 2.5) * 2.34 : 0);
+  const row = track.startIndex - Math.floor(index / 6) * 4;
+  const [gridX, , gridZ] = track.coursePoint(row, cars.length > 1 ? (column - 2.5) * 2.75 : 0);
   const [aheadX, , aheadZ] = track.coursePoint(row + 1);
   const [centerX, , centerZ] = track.coursePoint(row);
   const yaw = Math.atan2(aheadX - centerX, aheadZ - centerZ);
-  const stagger = cars.length > 1 ? (2.5 - column) * 0.56 : 0;
+  const stagger = cars.length > 1 ? (2.5 - column) * 0.86 : 0;
   const x = gridX + Math.sin(yaw) * stagger;
   const z = gridZ + Math.cos(yaw) * stagger;
   Object.assign(car, {
     x, z, yaw, startPose: { x, z, yaw }, speed: 0, steering: 0, slip: 0, driftDirection: 0, charge: 0,
     gridSide: index % 2 ? -1 : 1,
+    launchHold: 0, launchResult: '',
+    inkUntil: 0, plantUntil: 0, nextChompAt: 0, chompAt: -Infinity,
     boostTime: 0, boostColor: '', boostCount: 0, spinTime: 0, hoverSpin: 0, hoverSpinDirection: 1,
     power: null, powerTime: 0, goldUntil: 0,
     flight: null, glider: 0, landingSquash: 0, wheelFold: 0,
@@ -178,13 +190,8 @@ function createViews(players) {
   intro.hidden = false;
   introTitle.textContent = track.name;
   countdownLabel.textContent = '';
-  const humanCount = players.filter(player => !player.bot).length;
   const viewCount = room.mode === 'play' ? 4 : 1;
   views.dataset.count = viewCount;
-  const visiblePlayers = new Set([
-    ...players.filter(player => !player.bot),
-    ...players.filter(player => player.bot).slice(0, viewCount - humanCount),
-  ]);
   cars = players.map(player => {
     const car = { ...player, camera: {}, controls: player, audioState: {} };
     const marker = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -197,26 +204,32 @@ function createViews(players) {
     if (!player.bot) marker.append(text);
     mapCars.append(marker);
     car.marker = marker;
-    if (!visiblePlayers.has(player)) return car;
+    if (viewCount === 4 ? player.number > 4 : player.bot) return car;
     const panel = document.createElement('article');
     panel.className = 'viewport';
+    panel.style.order = player.number;
     panel.style.setProperty('--seat', seatColor(player));
-    const driverLabel = player.bot ? (humanCount === 3 ? 'Spectator' : 'CPU ' + player.number) : 'P' + player.number;
+    const driverLabel = player.bot ? 'CPU ' + player.number : 'P' + player.number;
     panel.innerHTML = `
       <canvas aria-label="Chase camera for ${driverLabel}"></canvas>
+      <div class="ink-splash" aria-hidden="true" hidden>${inkSplash}</div>
       <div class="view-label"><strong>${driverLabel}</strong> ${roster[player.character].short}</div>
       <div class="wrong-way" role="status" hidden>Wrong Way</div>
       <div class="rear-warning" role="status" hidden><span aria-hidden="true"></span><strong></strong></div>
+      <div class="launch-feedback" hidden></div>
       <div class="inventory" aria-label="Item slot"></div>
       <div class="race-label"><strong></strong><span></span></div>
       ${room.mode === 'test' ? '<div class="speed"><strong>0</strong><span>KM/H</span></div>' : ''}
-      <div class="surface">ON TRACK</div>
+      ${room.mode === 'play' ? '' : '<div class="surface">ON TRACK</div>'}
       ${player.bot ? '' : '<button class="kart-recovery primary" type="button" hidden>Reset kart</button>'}`;
     views.append(panel);
     car.canvas = panel.querySelector('canvas');
     car.context = car.canvas.getContext('2d', { alpha: false });
+    car.inkLayer = panel.querySelector('.ink-splash');
     car.speedLabel = panel.querySelector('.speed strong');
     car.surfaceLabel = panel.querySelector('.surface');
+    car.driverLabel = panel.querySelector('.view-label strong');
+    car.launchLabel = panel.querySelector('.launch-feedback');
     car.placeLabel = panel.querySelector('.race-label strong');
     car.lapLabel = panel.querySelector('.race-label span');
     car.inventory = panel.querySelector('.inventory');
@@ -350,11 +363,11 @@ function updateLobby() {
     status.lastElementChild.textContent = `${players.length} / ${capacity} phones joined`;
     seats.dataset.count = capacity;
     seats.replaceChildren(...Array.from({ length: capacity }, (_, index) => {
-      const player = room.players[index];
+      const player = capacity === 4 ? players.find(seat => seat.number === index + 1) : players[0];
       const tile = document.createElement('div');
       tile.className = 'join-seat';
       if (!player) {
-        tile.textContent = 'Open slot';
+        tile.textContent = capacity === 4 ? `P${index + 1} · Open` : 'Waiting for a phone';
         return tile;
       }
       tile.style.setProperty('--seat', seatColor(player));
@@ -363,7 +376,7 @@ function updateLobby() {
       tile.append(label);
       return tile;
     }));
-    chooseTrackButton.textContent = players.length ? 'Choose a track' : 'Continue with keyboard';
+    chooseTrackButton.disabled = capacity === 4 && players.length === 0;
   }
   if (room.phase === 'track-selection') {
     for (const [id, button] of trackCards) {
@@ -387,7 +400,7 @@ function updateLobby() {
       button.style.boxShadow = '';
     }
   }
-  startButton.disabled = players.some(player => !player.ready);
+  startButton.disabled = (room.mode === 'play' && !players.length) || players.some(player => !player.ready);
   select('lobby-help').textContent = players.length
     ? 'Use the arrows on your phone, then confirm your driver.' : 'Select a driver to race with the keyboard.';
 }
@@ -544,6 +557,10 @@ async function reportRecovery(now) {
   }
 }
 
+function cpuDriving(car) {
+  return car.bot || (!car.keyboard && car.controls.connected === false);
+}
+
 function physics(car, dt, pace) {
   const camera = car.camera;
   const previousX = car.x;
@@ -552,7 +569,10 @@ function physics(car, dt, pace) {
   car.powerTime = finished ? 0 : Math.max(0, car.powerTime - dt);
   const bullet = car.powerTime > 0 && car.power === 'bullet';
   const star = car.powerTime > 0 && car.power === 'star';
-  const autoDrive = car.bot || finished || bullet;
+  const cpu = cpuDriving(car);
+  if (cpu && !finished) pace *= botPace(car.number);
+  if (car.inkUntil > elapsed - raceStart) pace *= 0.86;
+  const autoDrive = cpu || finished || bullet;
   const brakeTap = car.controls.brakeTap ?? 0;
   const trickTap = !autoDrive && car.spinTime <= 0 && (car.trickQueued || brakeTap > car.lastBrakeTap);
   car.trickQueued = false;
@@ -618,6 +638,7 @@ function physics(car, dt, pace) {
   car.effectTime += dt;
   const boosting = car.boostTime > 0;
   const mushroom = boosting && mushroomBoost;
+  const launchBoost = boosting && car.boostColor === launchBoostColor;
   const onRoadSpeed = drifting ? driftTopSpeed : boosting ? 31 : roadTopSpeed * pace;
   const maxSpeed = mushroom ? mushroomTopSpeed : boosting && trickBoost ? trickBoostSpeed : star ? roadTopSpeed * 1.18 :
     onRoad || (hoverBoost && boosting) ? onRoadSpeed : roadTopSpeed * pace * grassSpeedFactor;
@@ -630,7 +651,7 @@ function physics(car, dt, pace) {
   } else if (brake && throttle === 0) {
     const speed = Math.max(0, Math.abs(car.speed) - 27 * dt);
     car.speed = speed === 0 ? 0 : Math.sign(car.speed) * speed;
-  } else if ((mushroom || (boosting && trickBoost)) && throttle >= 0) {
+  } else if ((mushroom || launchBoost || (boosting && trickBoost)) && throttle >= 0) {
     car.speed = Math.min(maxSpeed, car.speed + 31 * dt);
   } else if (throttle) {
     const braking = Math.sign(car.speed) !== throttle && Math.abs(car.speed) > 0.2;
@@ -855,6 +876,16 @@ function carMesh(car) {
         ['#3ba6d9', '#7ae8ff', '#dafaff']);
     }
     return mesh;
+  }
+  if (car.plantUntil > 0 && car.plantUntil > elapsed - raceStart && car.finishedAt === null) {
+    const biteAge = elapsed - raceStart - car.chompAt;
+    const jaw = 0.08 + 0.26 * Math.max(0, 1 - biteAge / 0.24);
+    ellipsoid(mesh, place, [0, 0.8, 1.48], [0.19, 0.65, 0.19], ['#257c4b', '#49ae54']);
+    ellipsoid(mesh, place, [0, 1.33 + jaw, 1.52], [0.50, 0.21, 0.47], ['#663958', '#b45880', '#e587a2']);
+    ellipsoid(mesh, place, [0, 1.31 - jaw, 1.60], [0.48, 0.18, 0.42], ['#6e3b5e', '#e595b2']);
+    for (const side of [-1, 1]) {
+      box(mesh, place, side * 0.19 - 0.05, 1.29 + jaw, 1.83, 0.1, 0.12, 0.10, ['#fff0d1']);
+    }
   }
   const wheelTilt = hover * Math.PI / 2;
   const tiltSin = Math.sin(wheelTilt);
@@ -1378,11 +1409,20 @@ function hud() {
   for (const [index, car] of positions.entries()) {
     if (car.canvas) {
       if (car.speedLabel) setText(car.speedLabel, String(Math.round(Math.abs(car.speed) * 3.6)));
-      setText(car.surfaceLabel, car.surface);
-      if (car.hudColor !== car.surfaceColor) {
+      if (car.surfaceLabel) setText(car.surfaceLabel, car.surface);
+      if (car.surfaceLabel && car.hudColor !== car.surfaceColor) {
         car.hudColor = car.surfaceColor;
         car.surfaceLabel.style.color = car.surfaceColor;
       }
+      if (!car.bot) setText(car.driverLabel, 'P' + car.number + (cpuDriving(car) ? ' · CPU' : ''));
+      car.launchLabel.hidden = !car.launchResult || elapsed > raceStart + 1.2;
+      if (!car.launchLabel.hidden) {
+        car.launchLabel.dataset.result = car.launchResult;
+        setText(car.launchLabel, car.launchResult === 'boost' ? 'BOOST START' : 'BURNOUT');
+      }
+      const ink = car.inkUntil > 0 ? car.inkUntil - (elapsed - raceStart) : 0;
+      car.inkLayer.hidden = ink <= 0 || car.finishedAt !== null;
+      if (!car.inkLayer.hidden) car.inkLayer.style.opacity = Math.min(0.94, ink * 0.83);
       const hideWarning = car.finishedAt !== null || car.wrongWayTime < 0.45;
       if (car.wrongWayLabel.hidden !== hideWarning) car.wrongWayLabel.hidden = hideWarning;
       const incoming = rearThreat(car, threats);
@@ -1470,6 +1510,8 @@ function raceAudio() {
     }
     if (car.spinTime > 0 && !previous.spin) cues.add('hit');
     if (car.trickCount > (previous.trickCount ?? 0)) cues.add('trick');
+    if (car.chompAt > (previous.chompAt ?? -Infinity)) cues.add('chomp');
+    if (car.inkUntil > (previous.inkUntil ?? 0)) cues.add('ink');
     if (car.wallContact && !previous.wall && elapsed - (previous.lastWall ?? -Infinity) > 0.3) {
       cues.add('wall');
       previous.lastWall = elapsed;
@@ -1477,6 +1519,7 @@ function raceAudio() {
     if (car.finishedAt !== null && !previous.finished && showResultsAt === Infinity) cues.add('finish');
     Object.assign(previous, { roulette: car.roulette, roll, uses: car.itemUses,
       trickCount: car.trickCount,
+      chompAt: car.chompAt, inkUntil: car.inkUntil,
       boost: car.boostTime > 0 || car.powerTime > 0, boostCount: car.boostCount,
       spin: car.spinTime > 0, wall: car.wallContact, finished: car.finishedAt !== null });
   }
@@ -1506,10 +1549,23 @@ function frame(now) {
     while (pendingTime >= step) {
       elapsed += step;
       pendingTime -= step;
+      if (elapsed >= countdownStart && elapsed - step < raceStart) {
+        const remaining = raceStart - elapsed;
+        for (const car of cars) {
+          const keyboard = (car.keyboard || car.number === 1) && Boolean(down('w', 'arrowup'));
+          const held = cpuDriving(car) ? remaining < (car.number % 5) * 0.51 :
+            keyboard || (live && car.controls.throttle > 0);
+          car.launchHold = held ? car.launchHold + step : 0;
+          if (remaining <= 0) {
+            car.launchResult = launchFromGrid(car);
+            car.launchHold = 0;
+          }
+        }
+      }
       if (elapsed > raceStart) {
         const raceTime = elapsed - raceStart;
         const leaderProgress = Math.max(...cars.map(car => car.progress));
-        for (const car of cars) if (!car.bot) applyRecovery(car);
+        for (const car of cars) if (!cpuDriving(car)) applyRecovery(car);
         const starts = cars.map(({ x, z }) => [x, z]);
         for (const [index, car] of cars.entries()) {
           if (physics(car, step, catchUpFactor(track, car, leaderProgress, cars.length))) {
@@ -1520,7 +1576,10 @@ function frame(now) {
         for (const [index, car] of cars.entries()) advanceProgress(track, car, ...starts[index], raceTime, step);
         const positions = standings(cars);
         for (const car of positions) {
-          if (car.bot) {
+          if (cpuDriving(car)) {
+            car.fireQueued = false;
+            car.lastShellShot = car.controls.shellShot ?? 0;
+            car.lastReset = car.controls.resetRequest ?? 0;
             if (useBotItem(car, positions, raceTime)) trackItems.use(car, raceTime, positions, car.item === 'banana');
             continue;
           }

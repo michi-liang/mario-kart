@@ -27,12 +27,14 @@
       <section class="pairing" id="pairing" aria-labelledby="pair-heading" hidden>
         <h2 id="pair-heading" tabindex="-1">Join with your phone</h2>
         <div class="status" id="phone-status" role="status"><i></i><span>Waiting for phones</span></div>
-        <a class="qr" id="pair-link" target="_blank" rel="noreferrer" aria-label="Open the phone controller">
-          <img id="qr" width="216" height="216" alt="Phone controller pairing QR code">
-        </a>
+        <div class="pair-grid">
+          <div id="seats" class="seats" aria-label="Controller seats"></div>
+          <a class="qr" id="pair-link" target="_blank" rel="noreferrer" aria-label="Open the phone controller">
+            <img id="qr" width="216" height="216" alt="Phone controller pairing QR code">
+          </a>
+        </div>
         <p id="pair-note" class="pair-note" aria-live="polite"></p>
         <button id="copy" class="secondary" type="button">Copy controller link</button>
-        <div id="seats" class="seats" aria-label="Controller seats"></div>
         <button id="continue-to-tracks" class="primary" type="button">Choose a track</button>
       </section>
       <section id="track-selection" class="screen selection" aria-labelledby="track-heading" hidden>

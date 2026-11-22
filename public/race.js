@@ -1,6 +1,7 @@
 import { wallOffset } from './track.js';
 
 export const countdownSeconds = 3;
+export const launchBoostColor = '#f8a14b';
 export const kartScale = 0.56;
 export const roadTopSpeed = 27;
 export const grassSpeedFactor = 0.70;
@@ -14,6 +15,21 @@ export const wallClearance = wallOffset - 0.9 * kartScale;
 const kartDiameter = 2.8 * kartScale;
 const kartRestitution = 0.22;
 const derived = new WeakMap();
+
+export function launchFromGrid(car) {
+  if (car.launchHold >= 2.15) {
+    car.spinTime = 0.72;
+    car.spinLabel = 'BURNOUT';
+    car.spinColor = '#ff8c74';
+    return 'burnout';
+  }
+  if (car.launchHold < 1.15) return '';
+  car.boostTime = 0.92;
+  car.boostColor = launchBoostColor;
+  car.boostCount++;
+  car.speed = 19;
+  return 'boost';
+}
 
 // Checkpoint gates and the finish-ordered centerline depend only on the track,
 // so build them once per track.
