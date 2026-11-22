@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pocket Circuit</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/drive.js"></script>
+</head>
+<body>
+  <canvas id="course-film" aria-hidden="true"></canvas>
+  <main class="garage">
+    <header class="masthead">
+      <div class="mark" aria-hidden="true">▥</div>
+      <h1>Pocket Circuit</h1>
+      <span class="track-name">SUNBREAK COAST</span>
+      <button id="back" class="secondary" type="button" hidden>Menu</button>
+    </header>
+    <div class="layout">
+      <section id="menu" class="screen menu">
+        <h2>Choose a mode</h2>
+        <div class="mode-options">
+          <button class="mode-option" id="test-mode" type="button"><strong>Test mode</strong><span>Solo three-lap race</span></button>
+          <button class="mode-option" id="play-mode" type="button"><strong>Play mode</strong><span>Three-lap race</span></button>
+        </div>
+      </section>
+      <section id="selection" class="screen selection" hidden>
+        <div class="selection-header"><h2>Choose a driver</h2><button id="start" class="primary" type="button">Start</button></div>
+        <p id="lobby-help"></p>
+        <div id="roster" class="roster"></div>
+      </section>
+      <section id="race" class="drive" aria-label="Driving simulator" hidden>
+        <div id="views" class="views"></div>
+        <footer class="drive-footer">
+          <span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or arrows · <kbd>Shift</kbd> drift</span>
+        </footer>
+      </section>
+      <aside class="pairing" id="pairing">
+        <div class="status" id="phone-status" role="status"><i></i><span>Waiting for phones</span></div>
+        <h2>Join with your phone</h2>
+        <a class="qr" id="pair-link" target="_blank" rel="noreferrer" aria-label="Open the phone controller">
+          <img id="qr" width="180" height="180" alt="Phone controller pairing QR code">
+        </a>
+        <p id="pair-note" class="pair-note" aria-live="polite"></p>
+        <button id="copy" class="secondary copy" type="button">Copy controller link</button>
+        <div id="seats" class="seats"></div>
+      </aside>
+      <aside id="race-info" class="pairing race-info" hidden>
+        <h2>Course map</h2>
+        <svg class="course-map" viewBox="0 0 120 100" aria-label="Track map">
+          <path id="map-walls" />
+          <path id="map-course" /><g id="map-pickups"></g><g id="map-cars"></g>
+        </svg>
+        <ol id="standings" class="standings"></ol>
+      </aside>
+    </div>
+  </main>
+</body>
+</html>

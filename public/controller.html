@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Pocket Circuit Controller</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/controller.js"></script>
+</head>
+<body class="controller-page">
+  <main class="controller">
+    <p id="room-status" class="phone-status" role="status">Connecting to laptop.</p>
+    <section id="phone-lobby" class="phone-lobby">
+      <div id="arrows" class="arrows" role="group" aria-label="Choose a driver" hidden>
+        <button data-arrow="up" type="button" aria-label="Up">↑</button>
+        <button data-arrow="left" type="button" aria-label="Left">←</button>
+        <button data-arrow="down" type="button" aria-label="Down">↓</button>
+        <button data-arrow="right" type="button" aria-label="Right">→</button>
+      </div>
+      <div class="phone-seat"><strong id="player-number">Pocket Circuit</strong><p id="phone-pick">Waiting for the host.</p><div id="lobby-tilt"></div></div>
+      <button id="confirm-pick" class="primary" type="button" hidden>Confirm</button>
+    </section>
+    <section id="phone-race" class="phone-race" hidden>
+      <button id="brake" class="pedal brake" type="button">Drift / Brake</button>
+      <div class="steering" aria-label="Tilt steering">
+        <div class="steer-meter" aria-hidden="true"><div id="needle"></div></div>
+        <div id="race-tilt"><button id="tilt" class="primary" type="button">Enable tilt</button>
+          <p id="tilt-help" aria-live="polite"></p></div>
+        <button id="reverse" class="pedal reverse" type="button">Reverse</button>
+      </div>
+      <button id="gas" class="pedal gas" type="button">Accelerate</button>
+    </section>
+  </main>
+</body>
+</html>
