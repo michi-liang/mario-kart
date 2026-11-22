@@ -23,7 +23,7 @@ Sunbreak Coast is about 778 meters per lap with a 20.7-meter road and a chicane 
 
 The steering design uses proportional phone input and separates the kart's visual heading from the direction it travels. [Smartphone racing-controller evaluation](https://www.diva-portal.org/smash/get/diva2%3A831318/FULLTEXT01.pdf) · [Stanford drifting paper](https://ddl.stanford.edu/publications/conference-proceeding/controller-automated-drifting-along-complex-trajectories)
 
-The phone sends updates over a persistent WebSocket with HTTP as a fallback. The temporary Cloudflare tunnel carries controller traffic in tunnel mode. If the phone and laptop are on the same network, direct HTTPS can avoid the tunnel round trip. The laptop display stays on localhost, and the QR code contains a random key for the current run. Stop the server with **Ctrl+C** when done. On macOS or Linux, use `npm` in place of `npm.cmd`.
+The temporary Cloudflare tunnel carries controller traffic in tunnel mode. The laptop display stays on localhost, and the QR code contains a random key for the current run. Stop the server with **Ctrl+C** when done. On macOS or Linux, use `npm` in place of `npm.cmd`.
 
 ## Same-Wi-Fi options
 

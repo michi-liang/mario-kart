@@ -185,16 +185,13 @@ function seatBadge(player, showReady = false) {
 }
 function updateRoom(state) {
   if (!state?.players) return;
-  const phaseChanged = room.phase !== state.phase;
   room = state;
   live = true;
-  if (phaseChanged) {
-    for (const [phase, element] of Object.entries(screens)) element.hidden = phase !== room.phase;
-    select('back').hidden = room.phase === 'menu';
-    select('pairing').hidden = room.phase === 'racing';
-    select('race-info').hidden = room.phase !== 'racing';
-    courseFilm.hidden = room.phase === 'racing';
-  }
+  for (const [phase, element] of Object.entries(screens)) element.hidden = phase !== room.phase;
+  select('back').hidden = room.phase === 'menu';
+  select('pairing').hidden = room.phase === 'racing';
+  select('race-info').hidden = room.phase !== 'racing';
+  courseFilm.hidden = room.phase === 'racing';
   if (room.phase === 'racing') {
     if (drawnRound !== room.round) {
       drawnRound = room.round;
@@ -295,7 +292,7 @@ function physics(car, dt, pace) {
   const mushroom = boosting && car.boostColor === mushroomColor;
   const boostedTopSpeed = mushroom ? mushroomTopSpeed : 31;
   const maxSpeed = onRoad ? (boosting ? boostedTopSpeed : 24 * pace) : 10;
-  car.steering += (steer - car.steering) * (1 - Math.exp(-22 * dt));
+  car.steering += (steer - car.steering) * (1 - Math.exp(-12 * dt));
   if (brake && throttle === 0) {
     const speed = Math.max(0, Math.abs(car.speed) - 27 * dt);
     car.speed = speed === 0 ? 0 : Math.sign(car.speed) * speed;
@@ -838,16 +835,11 @@ function hud() {
   const countdown = elapsed < countdownSeconds ? String(Math.ceil(countdownSeconds - elapsed))
     : elapsed < countdownSeconds + 0.75 ? 'GO!' : '';
   for (const [index, car] of positions.entries()) {
-    const speed = String(Math.round(Math.abs(car.speed) * 3.6));
-    if (car.speedLabel.textContent !== speed) car.speedLabel.textContent = speed;
-    if (car.surfaceLabel.textContent !== car.surface) car.surfaceLabel.textContent = car.surface;
-    if (car.lastSurfaceColor !== car.surfaceColor) {
-      car.lastSurfaceColor = car.surfaceColor;
-      car.surfaceLabel.style.color = car.surfaceColor;
-    }
+    car.speedLabel.textContent = Math.round(Math.abs(car.speed) * 3.6);
+    car.surfaceLabel.textContent = car.surface;
+    car.surfaceLabel.style.color = car.surfaceColor;
     if (car.countdownLabel.textContent !== countdown) car.countdownLabel.textContent = countdown;
-    const raceLabel = `#${index + 1} · ${car.finishedAt === null ? 'Lap ' + Math.min(3, car.lap + 1) + '/3' : 'Finished'}`;
-    if (car.raceLabel.textContent !== raceLabel) car.raceLabel.textContent = raceLabel;
+    car.raceLabel.textContent = `#${index + 1} · ${car.finishedAt === null ? 'Lap ' + Math.min(3, car.lap + 1) + '/3' : 'Finished'}`;
     const [x, y] = mapPoint(car.x, car.z);
     car.marker.setAttribute('transform', `translate(${Math.max(5, Math.min(115, x))} ${Math.max(5, Math.min(95, y))})`);
   }

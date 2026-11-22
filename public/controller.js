@@ -34,16 +34,6 @@ let steering = 0;
 let sending = false;
 let sensorTimer;
 let lastError;
-let socket;
-let nextConnect = 0;
-let fallbackAfter = 0;
-let lastReply = 0;
-let lastWireInput = '';
-let lastWireSend = -Infinity;
-let sentCommand;
-let sentCommandAt = 0;
-let lastHttp = -Infinity;
-let packet = 0;
 
 function tiltResponse(angle) {
   const value = Math.max(0, Math.min(1, (Math.abs(angle) - tiltDeadZone) / (fullSteerAngle - tiltDeadZone)));
@@ -79,7 +69,7 @@ function orient(event) {
   }
   if (help.textContent) help.textContent = '';
   const angle = ((roll - baseline + 540) % 360) - 180;
-  steering += (tiltResponse(angle) - steering) * (1 - Math.exp(-(now - motionSeen) / 20));
+  steering += (tiltResponse(angle) - steering) * (1 - Math.exp(-(now - motionSeen) / 30));
   motionSeen = now;
 }
 
@@ -185,104 +175,36 @@ function showRoom(state) {
   document.documentElement.style.setProperty('--player-color', playerColors[state.number - 1]);
 }
 
-function acceptResult(result) {
-  if (result.status !== 200) {
-    showConnection(result.error || 'Controller unavailable.');
-    return;
-  }
-  while (commands.length && commands[0].sequence <= result.acknowledged) commands.shift();
-  showConnection();
-  showRoom(result);
-}
-
-function connectSocket(now) {
-  const url = new URL(endpoint, location.href);
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  fallbackAfter = now + 400;
-  nextConnect = now + 3000;
-  let connection;
-  try {
-    connection = new WebSocket(url);
-  } catch {
-    fallbackAfter = 0;
-    return;
-  }
-  socket = connection;
-  lastReply = now;
-  lastWireSend = -Infinity;
-  sentCommand = undefined;
-  connection.addEventListener('open', () => {
-    if (socket === connection) tick();
-  });
-  connection.addEventListener('message', event => {
-    if (socket !== connection) return;
-    lastReply = performance.now();
-    acceptResult(JSON.parse(event.data));
-    if (commands.length && commands[0] !== sentCommand) tick();
-  });
-  connection.addEventListener('close', () => {
-    if (socket !== connection) return;
-    socket = undefined;
-    fallbackAfter = 0;
-  });
-}
-
-function message(input, command, now) {
-  packet = Math.max(packet + 0.001, performance.timeOrigin + now);
-  return JSON.stringify({ id, ...input, ...command, packet });
-}
-
-async function postInput(body, command) {
+async function tick() {
+  if (document.hidden) return;
+  const steer = performance.now() - motionSeen < 500 ? steering : 0;
+  needle.style.left = (50 + steer * 46) + '%';
+  if (sending) return;
   sending = true;
+  const command = commands[0];
+  const throttle = pressed.get(gas).size ? 1 : pressed.get(reverse).size ? -1 : 0;
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body,
+      body: JSON.stringify({ id, ...command, steer, throttle,
+        brake: throttle >= 0 && pressed.get(brake).size > 0 }),
       signal: AbortSignal.timeout(800),
     });
     const result = await response.json();
-    if (response.ok && command && result.acknowledged === undefined && commands[0] === command) {
-      commands.shift();
+    if (response.ok) {
+      if (command && commands[0] === command) commands.shift();
+      showConnection();
+      showRoom(result);
+    } else {
+      showConnection(result.error || 'Controller unavailable.');
     }
-    if (socket?.readyState !== 1) acceptResult({ status: response.status, ...result });
   } catch {
-    if (socket?.readyState !== 1) showConnection('Reconnecting to laptop.');
+    showConnection('Reconnecting to laptop.');
   } finally {
     sending = false;
   }
 }
 
-function tick() {
-  if (document.hidden) return;
-  const now = performance.now();
-  const steer = now - motionSeen < 500 ? Math.round(steering * 200) / 200 : 0;
-  needle.style.left = (50 + steer * 46) + '%';
-  const throttle = pressed.get(gas).size ? 1 : pressed.get(reverse).size ? -1 : 0;
-  const input = { steer, throttle, brake: throttle >= 0 && pressed.get(brake).size > 0 };
-  const command = commands[0];
-  if (socket && now - lastReply > 1300) {
-    socket.close();
-    socket = undefined;
-    fallbackAfter = 0;
-  }
-  if (!socket && now >= nextConnect && typeof WebSocket !== 'undefined') connectSocket(now);
-  if (socket?.readyState === 1) {
-    const key = JSON.stringify(input);
-    const commandDue = command && (command !== sentCommand || now - sentCommandAt >= 350);
-    if (socket.bufferedAmount < 512 && (commandDue || key !== lastWireInput || now - lastWireSend >= 150)) {
-      socket.send(message(input, commandDue ? command : undefined, now));
-      lastWireInput = key;
-      lastWireSend = now;
-      if (commandDue) {
-        sentCommand = command;
-        sentCommandAt = now;
-      }
-    }
-  } else if (!sending && now >= fallbackAfter && now - lastHttp >= 33) {
-    lastHttp = now;
-    postInput(message(input, command, now), command);
-  }
-}
 tick();
-setInterval(tick, 16);
+setInterval(tick, 40);

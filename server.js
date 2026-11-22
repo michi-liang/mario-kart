@@ -7,7 +7,6 @@ import { networkInterfaces } from 'node:os';
 import { qrSvg } from './qr.js';
 import { makeLanCertificate } from './lan-certificate.js';
 import { createRoom } from './room.js';
-import { acceptControllerSocket } from './controller-socket.js';
 
 const tunnelMode = process.argv.includes('--tunnel');
 const localHttps = process.argv.includes('--lan-https');
@@ -33,7 +32,6 @@ let tunnelStatus = tunnelMode ? 'starting' : 'off';
 const clients = new Set();
 const room = createRoom();
 let lastEvent;
-let nextPublish;
 
 const assets = new Map([
   ['/style.css', ['text/css', 'style.css']],
@@ -65,20 +63,7 @@ function publish() {
   const event = `data: ${JSON.stringify(room.snapshot())}\n\n`;
   if (event === lastEvent) return;
   lastEvent = event;
-  for (const res of clients) {
-    if (res.writableLength > 8192) res.destroy();
-    else res.write(event);
-  }
-}
-function receiveController(data) {
-  const result = room.input(data?.id, data);
-  if (result.status === 200 && !nextPublish && clients.size) {
-    nextPublish = setTimeout(() => {
-      nextPublish = undefined;
-      publish();
-    }, 8);
-  }
-  return result;
+  for (const res of clients) res.write(event);
 }
 function pairingUrl() {
   return `${origin}/p?k=${token}`;
@@ -101,8 +86,7 @@ const display = createServer((req, res) => {
   }
   if (pathname === '/pairing.svg') return send(res, 200, 'image/svg+xml', qrSvg(pairingUrl()));
   if (pathname === '/events') {
-    res.socket.setNoDelay(true);
-    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, no-transform' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
     const event = `data: ${JSON.stringify(room.snapshot())}\n\n`;
     if (!clients.size) lastEvent = event;
     res.write(event);
@@ -126,7 +110,7 @@ function controller(req, res) {
   if (req.method === 'GET' && url.pathname === '/p') return asset(res, '/p');
   if (req.method !== 'POST' || url.pathname !== '/input') return send(res, 404, 'text/plain', 'Not found');
   readJson(req, res, data => {
-    const result = receiveController(data);
+    const result = room.input(data?.id, data);
     send(res, result.status, 'application/json', JSON.stringify(result));
   });
 }
@@ -158,27 +142,12 @@ function readJson(req, res, callback) {
   });
 }
 const phone = tls ? createSecureServer(tls, controller) : createServer(controller);
-const controllerSockets = new Set();
-phone.on('upgrade', (req, socket, head) => {
-  const url = new URL(req.url.startsWith('/') ? 'http://localhost' + req.url : 'http://localhost/');
-  if (url.pathname !== '/input' || url.searchParams.get('k') !== token) {
-    socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
-    return;
-  }
-  if (controllerSockets.size >= 12) {
-    socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
-    return;
-  }
-  controllerSockets.add(socket);
-  socket.on('close', () => controllerSockets.delete(socket));
-  acceptControllerSocket(req, socket, head, receiveController);
-});
 phone.listen(phonePort, '0.0.0.0', () => {
   console.log(`LAN controller: ${pairingUrl()}`);
   if (tunnelMode) startTunnel();
 });
 
-setInterval(publish, 100).unref();
+setInterval(publish, 33).unref();
 setInterval(() => {
   for (const res of clients) res.write(': heartbeat\n\n');
 }, 15000).unref();

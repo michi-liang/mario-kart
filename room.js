@@ -38,9 +38,9 @@ export function createRoom() {
   }
 
   function input(id, data, now = Date.now()) {
-    const { steer, throttle, brake = false, command, sequence, packet } = data || {};
+    const { steer, throttle, brake = false, command, sequence } = data || {};
     if (!/^[a-f0-9]{24}$/.test(id ?? '') || ![steer, throttle].every(Number.isFinite) ||
-      typeof brake !== 'boolean' || (packet !== undefined && !Number.isFinite(packet)) || (command !== undefined &&
+      typeof brake !== 'boolean' || (command !== undefined &&
         (typeof command !== 'string' || (!Object.hasOwn(moves, command) && command !== 'confirm') ||
           !Number.isSafeInteger(sequence) || sequence < 1))) {
       return { status: 400, error: 'Invalid controller input' };
@@ -56,10 +56,7 @@ export function createRoom() {
       seat.ready = false;
     }
     seat.lastSeen = now;
-    if (packet === undefined || seat.packet === undefined || packet > seat.packet) {
-      seat.controls = { steer: clamp(steer), throttle: clamp(throttle), brake };
-      seat.packet = packet;
-    }
+    seat.controls = { steer: clamp(steer), throttle: clamp(throttle), brake };
     const selecting = phase === 'selection' && contestants(now).includes(seat);
     if (command && sequence > seat.sequence) {
       seat.sequence = sequence;
@@ -78,7 +75,7 @@ export function createRoom() {
       other !== seat && other.ready && other.character === seat.character);
     return { status: 200, number: seat.number,
       phase: (phase === 'racing' && !inRace) || (phase === 'selection' && !selecting) ? 'menu' : phase,
-      mode, ready: seat.ready, character: seat.character, taken, acknowledged: seat.sequence };
+      mode, ready: seat.ready, character: seat.character, taken };
   }
 
   function snapshot(now = Date.now()) {
