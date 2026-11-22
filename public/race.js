@@ -1,4 +1,4 @@
-import { centerline, coursePoint, halfRoad, nearestRoad, startIndex, step, wallOffset } from './track.js';
+import { centerline, coursePoint, nearestRoad, startIndex, step, wallOffset } from './track.js';
 
 export const finish = startIndex + 10;
 export const countdownSeconds = 3;
@@ -26,7 +26,7 @@ export function advanceProgress(car, previousX, previousZ, elapsed, dt) {
     const t = -before / (after - before);
     const x = previousX + (car.x - previousX) * t - gate.x;
     const z = previousZ + (car.z - previousZ) * t - gate.z;
-    if (Math.abs(x * gate.rightX + z * gate.rightZ) < halfRoad + 1.2) {
+    if (Math.abs(x * gate.rightX + z * gate.rightZ) <= wallOffset + 0.15) {
       if (car.checkpoint === 0) {
         if (car.started) car.lap++;
         car.started = true;
@@ -76,14 +76,23 @@ export function catchUpFactor(car, leaderProgress, racerCount) {
 export function hitWall(car, previousX, previousZ) {
   const nearest = nearestRoad(car.x, car.z);
   if (nearest.distance <= wallClearance) return false;
-  const scale = wallClearance / nearest.distance;
-  const x = nearest.x + (car.x - nearest.x) * scale;
-  const z = nearest.z + (car.z - nearest.z) * scale;
-  const moved = Math.hypot(x - previousX, z - previousZ);
-  car.x = x;
-  car.z = z;
-  if (moved < 0.035) car.speed = 0;
-  else car.speed *= 0.69;
+  const normalX = (car.x - nearest.x) / nearest.distance;
+  const normalZ = (car.z - nearest.z) / nearest.distance;
+  const dx = car.x - previousX;
+  const dz = car.z - previousZ;
+  const outward = dx * normalX + dz * normalZ;
+  car.x = nearest.x + normalX * (wallClearance - 0.02);
+  car.z = nearest.z + normalZ * (wallClearance - 0.02);
+  if (outward <= 0) return false;
+
+  // Keep the motion along the barrier and bounce the outward component back.
+  const reboundX = dx - 1.22 * outward * normalX;
+  const reboundZ = dz - 1.22 * outward * normalZ;
+  const direction = Math.sign(car.speed);
+  const yaw = Math.atan2(reboundX * direction, reboundZ * direction);
+  const turn = yaw - car.yaw;
+  car.yaw += Math.atan2(Math.sin(turn), Math.cos(turn));
+  car.speed *= Math.hypot(reboundX, reboundZ) / Math.hypot(dx, dz);
   car.driftDirection = 0;
   car.charge = 0;
   car.boostTime = 0;

@@ -263,11 +263,15 @@ function physics(car, dt, pace) {
   const finished = car.finishedAt !== null;
   const steer = spinning ? 0 : keyboardSteer || (live && phone.steer) || 0;
   const canDrive = !finished && !spinning;
-  const throttle = canDrive ? keyboardThrottle || (live && phone.throttle) || 0 : 0;
-  const brake = finished || (!spinning && keyboardThrottle === 0 && live && phone.brake);
+  const requestedThrottle = canDrive ? keyboardThrottle || (live && phone.throttle) || 0 : 0;
+  const driftButton = !spinning && keyboardThrottle === 0 && live && phone.brake;
+  const keyboardDrift = keyboard && keys.has('shift');
+  const reverseFromStop = canDrive && (driftButton || keyboardDrift) && requestedThrottle === 0 && car.speed <= 0;
+  const throttle = reverseFromStop ? -1 : requestedThrottle;
+  const brake = finished || driftButton;
   const distance = roadDistance(car.x, car.z);
   const onRoad = distance < halfRoad + 0.45;
-  const driftHeld = throttle > 0 && (brake || (keyboard && keys.has('shift')));
+  const driftHeld = throttle > 0 && (driftButton || keyboardDrift);
   const canDrift = onRoad && car.speed > 7;
   if (car.driftDirection && (!driftHeld || !canDrift)) {
     const turbo = turboStage(car.charge);
@@ -291,7 +295,7 @@ function physics(car, dt, pace) {
   const boosting = car.boostTime > 0;
   const mushroom = boosting && car.boostColor === mushroomColor;
   const boostedTopSpeed = mushroom ? mushroomTopSpeed : 31;
-  const maxSpeed = onRoad ? (boosting ? boostedTopSpeed : 24 * pace) : 10;
+  const maxSpeed = onRoad ? (boosting ? boostedTopSpeed : 24 * pace) : 17;
   car.steering += (steer - car.steering) * (1 - Math.exp(-12 * dt));
   if (brake && throttle === 0) {
     const speed = Math.max(0, Math.abs(car.speed) - 27 * dt);
@@ -302,9 +306,9 @@ function physics(car, dt, pace) {
       (13 - 5 * Math.max(0, car.speed) / maxSpeed) * (onRoad ? pace : 1);
     car.speed += throttle * acceleration * dt;
   } else {
-    car.speed *= Math.exp(-(onRoad ? 1.0 : 2.4) * dt);
+    car.speed *= Math.exp(-(onRoad ? 1.0 : 1.45) * dt);
   }
-  if (car.speed > maxSpeed) car.speed = Math.max(maxSpeed, car.speed - (onRoad ? 34 : 38) * dt);
+  if (car.speed > maxSpeed) car.speed = Math.max(maxSpeed, car.speed - (onRoad ? 34 : 15) * dt);
   car.speed = Math.max(-6, car.speed);
   const grip = 1 - Math.exp(-(drifting ? 7 : 9) * dt);
   const driftSteer = car.steering * car.driftDirection;
@@ -674,11 +678,11 @@ const mushroomMesh = [];
 ellipsoid(mushroomMesh, point => point, [0, 0.52, 0], [0.34, 0.45, 0.34],
   ['#d2a07a', '#ffe1ac', '#fff3d6']);
 ellipsoid(mushroomMesh, point => point, [0, 0.92, 0], [0.81, 0.16, 0.81],
-  ['#a7613a', '#be7542', '#ffe6b6']);
+  ['#9e3039', '#c34248', '#ffe6d6']);
 ellipsoid(mushroomMesh, point => point, [0, 1.12, 0], [0.82, 0.36, 0.82],
-  ['#a34d3c', '#e47c47', '#fcb16b', '#ffce91']);
+  ['#862339', '#bd313e', '#eb4d50', '#ff7972']);
 ellipsoid(mushroomMesh, point => point, [-0.23, 1.41, 0.18], [0.30, 0.08, 0.20],
-  ['#f9aa69', '#ffdc9a']);
+  ['#ffcebf', '#fff0e6']);
 
 const bananaMesh = [];
 ellipsoid(bananaMesh, point => point, [0, 0.38, 0], [0.19, 0.38, 0.19],

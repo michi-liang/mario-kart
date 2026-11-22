@@ -1,7 +1,7 @@
 import { centerline, coursePoint, halfRoad } from './track.js';
 import { finish } from './race.js';
 
-export const mushroomColor = '#ffc681';
+export const mushroomColor = '#f46565';
 export const mushroomTopSpeed = 27;
 export const bananaColor = '#f9e753';
 export const bananaSpinTime = 0.82;

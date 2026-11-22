@@ -1,5 +1,6 @@
 const idle = { steer: 0, throttle: 0, brake: false };
 const clamp = value => Math.max(-1, Math.min(1, value));
+const maxSensorReading = 5; // Wider than the full physical range of the phone's tilt curve.
 const moves = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
 
 export function createRoom() {
@@ -40,6 +41,7 @@ export function createRoom() {
   function input(id, data, now = Date.now()) {
     const { steer, throttle, brake = false, command, sequence } = data || {};
     if (!/^[a-f0-9]{24}$/.test(id ?? '') || ![steer, throttle].every(Number.isFinite) ||
+      Math.abs(steer) > maxSensorReading ||
       typeof brake !== 'boolean' || (command !== undefined &&
         (typeof command !== 'string' || (!Object.hasOwn(moves, command) && command !== 'confirm') ||
           !Number.isSafeInteger(sequence) || sequence < 1))) {
@@ -56,7 +58,7 @@ export function createRoom() {
       seat.ready = false;
     }
     seat.lastSeen = now;
-    seat.controls = { steer: clamp(steer), throttle: clamp(throttle), brake };
+    seat.controls = { steer, throttle: clamp(throttle), brake };
     const selecting = phase === 'selection' && contestants(now).includes(seat);
     if (command && sequence > seat.sequence) {
       seat.sequence = sequence;
