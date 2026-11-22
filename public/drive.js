@@ -403,7 +403,7 @@ function cameraSpace([x, y, z]) {
     forward * view.pitchCos - dy * view.pitchSin];
 }
 
-function polygon(points, color) {
+function polygon(points, color, seam = false) {
   const near = 0.3;
   if (points.every(point => point[2] < near)) return;
   const side = width / (2 * focal);
@@ -426,19 +426,22 @@ function polygon(points, color) {
   ctx.closePath();
   ctx.fillStyle = color;
   ctx.fill();
-  // Close subpixel seams between adjacent paved strips.
-  ctx.lineWidth = 0.55;
-  ctx.strokeStyle = color;
-  ctx.stroke();
+  // Road strips are adjacent and can show subpixel gaps after projection.
+  // Most other faces do not need an outline, so avoid a second draw operation.
+  if (seam) {
+    ctx.lineWidth = 0.55;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+  }
 }
 
-function paint(mesh) {
+function paint(mesh, seam = false) {
   for (const { points, color, center, radius } of mesh) {
     if (center) {
       const [x, , z] = cameraSpace(center);
       if (z + radius < 0.3 || Math.abs(x) - radius > (z + radius) * width / (2 * focal)) continue;
     }
-    polygon(points.map(cameraSpace), color);
+    polygon(points.map(cameraSpace), color, seam);
   }
 }
 
@@ -785,7 +788,7 @@ function draw(car, shot) {
   ctx.fillStyle = '#51aec7';
   ctx.fillRect(0, horizon, width, height);
   paint(terrain);
-  paint(road);
+  paint(road, true);
   const faces = [...gantry];
   if (car) {
     const shadow = Array.from({ length: 14 }, (_, i) => {
