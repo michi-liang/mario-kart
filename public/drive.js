@@ -728,9 +728,22 @@ ellipsoid(mushroomMesh, point => point, [-0.23, 1.41, 0.18], [0.30, 0.08, 0.20],
 
 const shellMesh = [];
 ellipsoid(shellMesh, point => point, [0, 0.44, 0], [0.78, 0.19, 0.68],
-  ['#4a785e', '#e5edc7', '#fff1d6']);
+  ['#42674b', '#e5edc7', '#fff1d6']);
 ellipsoid(shellMesh, point => point, [0, 0.6, 0], [0.71, 0.48, 0.61],
-  ['#184939', '#287851', '#45b46f', '#83dd83']);
+  ['#226442', '#2ca849', '#77e45b', '#b6ff93']);
+const shellPickupMesh = shellMesh.map(face => ({
+  ...face, points: face.points.map(([x, y, z]) => [x * 1.45, y * 1.45 + 0.48, z * 1.45]),
+}));
+const shellPickupRing = [];
+for (let i = 0; i < 16; i++) {
+  const ringPoint = (index, radius) => [
+    Math.cos(index * tau / 16) * radius, 0.04, Math.sin(index * tau / 16) * radius,
+  ];
+  shellPickupRing.push({
+    points: [ringPoint(i, 1.5), ringPoint(i, 1.25), ringPoint(i + 1, 1.25), ringPoint(i + 1, 1.5)],
+    color: i % 2 ? '#d8ffac' : shellColor,
+  });
+}
 const bananaMesh = [];
 ellipsoid(bananaMesh, point => point, [0, 0.38, 0], [0.19, 0.38, 0.19],
   ['#bb8b26', '#ebc638', '#ffed73']);
@@ -851,9 +864,16 @@ function draw(car, shot) {
       if (z < 0.5 || Math.abs(x) > z * width / (2 * focal) + 2.5) continue;
       const banana = item.type === 'banana';
       const bob = banana || item.moving ? 0 : Math.sin(elapsed * 3.8 + item.id) * 0.18;
-      const mesh = banana ? bananaMesh : item.type === 'shell' ? shellMesh : mushroomMesh;
+      const shellPickup = item.type === 'shell' && !item.moving;
+      const mesh = banana ? bananaMesh : item.type === 'shell'
+        ? (shellPickup ? shellPickupMesh : shellMesh) : mushroomMesh;
       for (const face of mesh) {
         faces.push({ ...face, points: face.points.map(([x, y, z]) => [x + item.x, y + bob, z + item.z]) });
+      }
+      if (shellPickup) {
+        paint(shellPickupRing.map(face => ({
+          ...face, points: face.points.map(([x, y, z]) => [x + item.x, y, z + item.z]),
+        })));
       }
     }
   }
@@ -912,17 +932,21 @@ function hud() {
     pickupMarkers = markers;
     mapPickups.replaceChildren(...pickups.map(item => {
       const [x, y] = mapPoint(item.x, item.z);
-      if (item.type === 'banana') {
+      if (item.type === 'banana' || item.type === 'shell') {
         const marker = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        marker.setAttribute('points', `${x},${y - 2.7} ${x + 2.25},${y + 1.75} ${x - 2.25},${y + 1.75}`);
-        marker.setAttribute('fill', bananaColor);
+        const shell = item.type === 'shell';
+        marker.setAttribute('points', shell
+          ? `${x},${y - 3.3} ${x + 3.3},${y} ${x},${y + 3.3} ${x - 3.3},${y}`
+          : `${x},${y - 2.7} ${x + 2.25},${y + 1.75} ${x - 2.25},${y + 1.75}`);
+        marker.setAttribute('fill', shell ? shellColor : bananaColor);
+        if (shell) marker.setAttribute('stroke', '#163824');
         return marker;
       }
       const marker = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       marker.setAttribute('cx', x);
       marker.setAttribute('cy', y);
       marker.setAttribute('r', '2');
-      marker.setAttribute('fill', item.type === 'shell' ? shellColor : mushroomColor);
+      marker.setAttribute('fill', mushroomColor);
       return marker;
     }));
   }

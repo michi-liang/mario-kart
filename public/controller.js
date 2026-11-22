@@ -16,9 +16,8 @@ const lobbyTilt = document.querySelector('#lobby-tilt');
 const raceTilt = document.querySelector('#race-tilt');
 const brake = document.querySelector('#brake');
 const gas = document.querySelector('#gas');
-const reverse = document.querySelector('#reverse');
 const landscape = window.matchMedia('(orientation: landscape)');
-const pressed = new Map([brake, gas, reverse].map(button => [button, new Set()]));
+const pressed = new Map([brake, gas].map(button => [button, new Set()]));
 const tiltDeadZone = 1.3;
 const fullSteerAngle = 41;
 const id = sessionStorage.getItem('pocket-circuit-seat') ||
@@ -183,13 +182,13 @@ async function tick() {
   if (sending) return;
   sending = true;
   const command = commands[0];
-  const throttle = pressed.get(gas).size ? 1 : pressed.get(reverse).size ? -1 : 0;
+  const throttle = pressed.get(gas).size ? 1 : 0;
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, ...command, steer, throttle,
-        brake: throttle >= 0 && pressed.get(brake).size > 0 }),
+        brake: pressed.get(brake).size > 0 }),
       signal: AbortSignal.timeout(800),
     });
     const result = await response.json();

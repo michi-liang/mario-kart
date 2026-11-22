@@ -162,8 +162,6 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
 .pedal.brake { background: #442e38; border-color: #754958; color: #ffbfac; }
 .pedal.gas.held { background: #c4ee79; color: #182817; border-color: #d4fa74; }
 .pedal.brake.held { background: #ed9c87; color: #341c24; border-color: #ffc5b4; }
-.pedal.reverse { min-height: 44px; font-size: 14px; background: #263641; border-color: #65828b; color: #d5e6ed; }
-.pedal.reverse.held { background: #96bbcb; color: #14232a; }
 .pedal.shell { min-height: 44px; font-size: 14px; background: #21442f; border-color: #529866; color: #a7edac; }
 .pedal.shell:active { background: #6cda7f; color: #12261a; }
 @media (orientation: portrait) {

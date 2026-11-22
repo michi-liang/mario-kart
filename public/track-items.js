@@ -5,7 +5,7 @@ export const mushroomColor = '#f46565';
 export const mushroomTopSpeed = 27;
 export const bananaColor = '#f9e753';
 export const bananaSpinTime = 0.82;
-export const shellColor = '#6cda7f';
+export const shellColor = '#83f879';
 const itemRules = [
   { type: 'mushroom', initial: 9, max: 17, interval: 1.25, jitter: 1, lifetime: 29 },
   { type: 'banana', initial: 2, max: 5, interval: 5, jitter: 3, lifetime: 24 },
@@ -103,7 +103,7 @@ export function createTrackItems(random = Math.random) {
     items = items.filter(item => {
       if (item.expires <= now) return false;
       let winner;
-      let nearest = item.type === 'banana' ? 1.8 : 2.15;
+      let nearest = item.type === 'banana' ? 1.8 : item.type === 'shell' ? 2.45 : 2.15;
       for (const car of cars) {
         if (car.finishedAt !== null) continue;
         if (item.type === 'shell' && car.hasShell) continue;
@@ -119,6 +119,10 @@ export function createTrackItems(random = Math.random) {
     });
     for (const rule of schedules) {
       if (now < rule.nextSpawn) continue;
+      if (rule.nextSpawn === 0 && rule.type === 'shell') {
+        const [x, , z] = coursePoint(finish + 5);
+        items.push({ id: nextId++, type: rule.type, x, z, expires: now + rule.lifetime });
+      }
       let active = items.filter(item => item.type === rule.type).length;
       const target = rule.nextSpawn === 0 ? rule.initial : Math.min(active + 1, rule.max);
       while (active < target) {
