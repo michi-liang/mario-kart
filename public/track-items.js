@@ -6,7 +6,7 @@ export const mushroomTopSpeed = 27;
 export const bananaColor = '#f9e753';
 export const bananaSpinTime = 0.82;
 const itemRules = [
-  { type: 'mushroom', initial: 5, max: 10, interval: 2, jitter: 1.5, lifetime: 29 },
+  { type: 'mushroom', initial: 9, max: 17, interval: 1.25, jitter: 1, lifetime: 29 },
   { type: 'banana', initial: 2, max: 5, interval: 5, jitter: 3, lifetime: 24 },
 ];
 
