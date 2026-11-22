@@ -7,10 +7,11 @@ export const bananaColor = '#f9e753';
 export const bananaSpinTime = 0.82;
 export const shellColor = '#83f879';
 const shellWallClearance = wallOffset - 0.65;
+const shellSpawnRate = 0.85;
 const itemRules = [
   { type: 'mushroom', initial: 9, max: 17, interval: 1.25, jitter: 1, lifetime: 29 },
   { type: 'banana', initial: 2, max: 5, interval: 5, jitter: 3, lifetime: 24 },
-  { type: 'shell', initial: 4, max: 7, interval: 3, jitter: 2, lifetime: 30 },
+  { type: 'shell', initial: 4, max: 7, interval: 3 / shellSpawnRate, jitter: 2 / shellSpawnRate, lifetime: 30 },
 ];
 
 function spinOut(car, label, color) {
@@ -99,7 +100,7 @@ export function createTrackItems(random = Math.random) {
     const z = car.z + dz * 1.55;
     const roomAhead = roadDistance(x, z) < shellWallClearance;
     shells.push({ id: nextId++, type: 'shell', owner: car.number, moving: true,
-      x: roomAhead ? x : car.x, z: roomAhead ? z : car.z, dx, dz, expires: now + 3 });
+      x: roomAhead ? x : car.x, z: roomAhead ? z : car.z, dx, dz, expires: now + 4.5 });
     car.hasShell = false;
   }
 
