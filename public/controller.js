@@ -16,10 +16,12 @@ const lobbyTilt = document.querySelector('#lobby-tilt');
 const raceTilt = document.querySelector('#race-tilt');
 const brake = document.querySelector('#brake');
 const gas = document.querySelector('#gas');
+const resetKart = document.querySelector('#reset-kart');
+const racePlayer = document.querySelector('#race-player');
 const landscape = window.matchMedia('(orientation: landscape)');
 const pressed = new Map([brake, gas].map(button => [button, new Set()]));
 const tiltDeadZone = 1.3;
-const fullSteerAngle = 41;
+const fullSteerAngle = 44;
 const id = sessionStorage.getItem('pocket-circuit-seat') ||
   Array.from(crypto.getRandomValues(new Uint8Array(12)), byte => byte.toString(16).padStart(2, '0')).join('');
 sessionStorage.setItem('pocket-circuit-seat', id);
@@ -77,7 +79,7 @@ function orient(event) {
   const blend = 1 - Math.exp(-(now - motionSeen) / 30);
   steering += (tiltResponse(angle) - steering) * blend;
   const pitchDelta = pitch - pitchBaseline;
-  const targetPitch = Math.sign(pitchDelta) * Math.min(1, Math.max(0, (Math.abs(pitchDelta) - 2) / 23));
+  const targetPitch = -Math.sign(pitchDelta) * Math.min(1, Math.max(0, (Math.abs(pitchDelta) - 2) / 23));
   glidePitch += (targetPitch - glidePitch) * blend;
   motionSeen = now;
 }
@@ -113,6 +115,7 @@ function queueCommand(command) {
 }
 for (const button of arrowButtons) button.addEventListener('click', () => queueCommand(button.dataset.arrow));
 confirmPick.addEventListener('click', () => queueCommand('confirm'));
+resetKart.addEventListener('click', () => queueCommand('reset'));
 const use = document.querySelector('#fire-shell');
 use.addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
@@ -135,8 +138,10 @@ for (const [button, sources] of pressed) {
     if (event.button !== 0) return;
     event.preventDefault();
     button.setPointerCapture(event.pointerId);
+    const firstPress = sources.size === 0;
     setHeld(event.pointerId, true);
-    tick();
+    if (button === brake && firstPress) queueCommand('brake-tap');
+    else tick();
   });
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
     button.addEventListener(type, event => {
@@ -145,6 +150,9 @@ for (const [button, sources] of pressed) {
     });
   }
 }
+brake.addEventListener('click', event => {
+  if (event.detail === 0 && !event.pointerType) queueCommand('brake-tap');
+});
 function clearHeld() {
   for (const [button, sources] of pressed) {
     for (const source of sources) {
@@ -176,9 +184,11 @@ function showRoom(state) {
   lastState = key;
   const selecting = state.phase === 'selection';
   const racing = state.phase === 'racing';
-  if (lobby.hidden !== racing) clearHeld();
+  if (race.hidden === racing) clearHeld();
   lobby.hidden = racing;
   race.hidden = !racing;
+  racePlayer.textContent = 'P' + state.number;
+  resetKart.hidden = !racing || !state.canReset;
   arrows.hidden = !selecting;
   if (!selecting && !racing) commands.length = 0;
   for (const button of arrowButtons) button.disabled = state.ready;
@@ -187,8 +197,10 @@ function showRoom(state) {
   if (tilt.parentElement !== tiltSlot) tiltSlot.append(tilt, help);
   tiltSlot.hidden = !(selecting || racing);
   number.textContent = 'Player ' + state.number;
-  number.style.color = playerColors[state.number - 1];
-  pick.textContent = selecting ? roster[state.character].name + (state.ready ? ' · Ready' : '') : 'Waiting for the host.';
+  pick.textContent = selecting ? roster[state.character].name + (state.ready ? ' · Ready' : '') :
+    state.phase === 'pairing' ? 'Joined. Find your player color on the laptop.' :
+    state.phase === 'results' ? 'Race complete. Check the results on the laptop.' :
+    state.phase === 'track-selection' ? 'The host is choosing a track.' : 'Waiting for the host.';
   confirmPick.textContent = state.ready ? 'Change pick' : state.taken ? 'Driver taken' : 'Confirm';
   confirmPick.disabled = state.taken;
   document.documentElement.style.setProperty('--player-color', playerColors[state.number - 1]);

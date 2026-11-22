@@ -24,11 +24,13 @@ export function createDepthLayer() {
   gl.attachShader(program, shader(gl.FRAGMENT_SHADER, `
     precision mediump float;
     varying vec3 tint;
-    void main() { gl_FragColor = vec4(tint, 1.0); }`));
+    uniform float opacity;
+    void main() { gl_FragColor = vec4(tint * opacity, opacity); }`));
   gl.linkProgram(program);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
   const buffer = gl.createBuffer();
   const lens = gl.getUniformLocation(program, 'lens');
+  const opacityUniform = gl.getUniformLocation(program, 'opacity');
   gl.useProgram(program);
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
   for (const [attribute, offset] of [['point', 0], ['color', 12]]) {
@@ -38,17 +40,12 @@ export function createDepthLayer() {
   }
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   const colors = new Map();
   let vertices = new Float32Array(65536);
 
-  function draw(faces, width, height, focal, destination, pixels) {
-    if (gl.isContextLost()) return false;
-    if (canvas.width !== pixels[0] || canvas.height !== pixels[1]) {
-      [canvas.width, canvas.height] = pixels;
-    }
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.uniform2f(lens, 2 * focal / width, 2 * focal / height);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  function drawBatch(faces, opacity) {
+    gl.uniform1f(opacityUniform, opacity);
     let used = 0;
     for (const { points, color } of faces) {
       let rgb = colors.get(color);
@@ -78,6 +75,39 @@ export function createDepthLayer() {
     }
     gl.bufferData(gl.ARRAY_BUFFER, vertices.subarray(0, used), gl.DYNAMIC_DRAW);
     gl.drawArrays(gl.TRIANGLES, 0, used / 6);
+  }
+
+  function draw(faces, width, height, focal, destination, pixels) {
+    if (gl.isContextLost()) return false;
+    if (canvas.width !== pixels[0] || canvas.height !== pixels[1]) {
+      [canvas.width, canvas.height] = pixels;
+    }
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.uniform2f(lens, 2 * focal / width, 2 * focal / height);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    const firstTransparent = faces.findIndex(face => face.opacity < 1);
+    if (firstTransparent < 0) drawBatch(faces, 1);
+    else {
+      const transparent = faces.filter(face => face.opacity < 1).map(face => ({
+        face, depth: face.points.reduce((sum, point) => sum + point[2], 0) / face.points.length,
+      })).sort((a, b) => b.depth - a.depth);
+      drawBatch(faces.filter(face => !(face.opacity < 1)), 1);
+      gl.enable(gl.BLEND);
+      gl.depthMask(false);
+      let batch = [];
+      let opacity = transparent[0].face.opacity;
+      for (const { face } of transparent) {
+        if (face.opacity !== opacity) {
+          drawBatch(batch, opacity);
+          batch = [];
+          opacity = face.opacity;
+        }
+        batch.push(face);
+      }
+      drawBatch(batch, opacity);
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+    }
     destination.drawImage(canvas, 0, 0, width, height);
     return true;
   }

@@ -3,8 +3,13 @@ import { wallOffset } from './track.js';
 export const countdownSeconds = 3;
 export const kartScale = 0.56;
 export const roadTopSpeed = 27;
+export const grassSpeedFactor = 0.70;
 export const hoverSpinSeconds = 0.64;
 export const hoverBoostColor = '#6bf5e8';
+export const trickBoostColor = '#ff945d';
+export const trickBoostSpeed = 32;
+export const trickSpinSeconds = 0.44;
+export const hoverHopSeconds = 0.30;
 export const wallClearance = wallOffset - 0.9 * kartScale;
 const kartDiameter = 2.8 * kartScale;
 const kartRestitution = 0.22;
@@ -33,15 +38,65 @@ export function resetProgress(car) {
   Object.assign(car, { lap: 0, checkpoint: 0, started: false, progress: 0, finishedAt: null, wrongWayTime: 0 });
 }
 
+export function recoveryPose(track, car) {
+  if (!car.started && car.startPose) return car.startPose;
+  let index = car.started ? track.finish + Math.floor(car.progress % track.count) : track.startIndex;
+  const jump = track.jump;
+  if (jump) {
+    const [x, , z] = track.coursePoint(index);
+    if (x >= jump.launch && x < jump.landing && Math.abs(z - jump.centerZ) < jump.halfSpan) {
+      while (track.coursePoint(index)[0] >= jump.launch - 3) index--;
+    }
+  }
+  const [x, , z] = track.coursePoint(index);
+  const [aheadX, , aheadZ] = track.coursePoint(index + 1);
+  return { x, z, yaw: Math.atan2(aheadX - x, aheadZ - z) };
+}
+
+export function offCourse(track, car, road) {
+  if (car.flight) return false;
+  const gap = track.jump;
+  return road.distance > wallClearance + 0.05 || Boolean(gap &&
+    car.x > gap.launch + 1 && car.x < gap.landing && Math.abs(car.z - gap.centerZ) < gap.halfSpan);
+}
+
+export function advanceBullet(track, car, road, speed, dt) {
+  if (car.bulletProgress === null) {
+    car.bulletProgress = road.index;
+    car.bulletLane = (car.x - road.x) * road.forwardZ - (car.z - road.z) * road.forwardX;
+  }
+  car.bulletProgress = (car.bulletProgress + speed * dt / track.step) % track.count;
+  car.bulletLane *= Math.exp(-4 * dt);
+  const index = Math.floor(car.bulletProgress);
+  const mix = car.bulletProgress - index;
+  const [x, , z] = track.coursePoint(index, car.bulletLane);
+  const [nextX, , nextZ] = track.coursePoint(index + 1, car.bulletLane);
+  car.x = x + (nextX - x) * mix;
+  car.z = z + (nextZ - z) * mix;
+  const turn = Math.atan2(nextX - x, nextZ - z) - car.yaw;
+  car.yaw += Math.atan2(Math.sin(turn), Math.cos(turn));
+  car.speed = speed;
+}
+
 export function updateWrongWay(car, road, dt) {
   const forward = Math.sin(car.yaw) * road.forwardX + Math.cos(car.yaw) * road.forwardZ;
   const againstTraffic = Math.abs(car.speed) > 1.5 && forward * Math.sign(car.speed) < -0.5;
   car.wrongWayTime = againstTraffic && car.finishedAt === null ? car.wrongWayTime + dt : 0;
 }
 
-export function advanceGlider(track, car, previousX, dt, pitch = 0) {
+export function advanceHoverEntry(car, hover, dt) {
+  car.hoverHop = Math.max(0, car.hoverHop - dt);
+  if (hover < 0.04) car.hoverEntered = false;
+  if (hover >= 0.12 && !car.hoverEntered) {
+    car.hoverEntered = true;
+    if (!car.flight) car.hoverHop = hoverHopSeconds;
+  }
+}
+
+export function advanceGlider(track, car, previousX, dt, pitch = 0, trickTap = false) {
   const jump = track.jump;
   if (!jump) return;
+  car.trickBuffer = trickTap ? 0.18 : Math.max(0, car.trickBuffer - dt);
   if (!car.flight && previousX < jump.launch && car.x >= jump.launch &&
       Math.abs(car.z - jump.centerZ) < jump.halfSpan) {
     car.flight = { y: jump.height, rise: 4.2, time: 0, pitch: 0 };
@@ -51,22 +106,39 @@ export function advanceGlider(track, car, previousX, dt, pitch = 0) {
   }
   if (car.flight) {
     const flight = car.flight;
+    if (flight.trickAt === undefined && flight.time <= 0.23 && car.trickBuffer > 0) {
+      flight.trickAt = flight.time;
+      flight.trickDirection = car.steering < -0.12 ? -1 : 1;
+      car.trickCount++;
+      car.trickBuffer = 0;
+    }
     flight.time += dt;
     const open = flight.time > 0.26;
     flight.pitch += ((open ? pitch : 0) - flight.pitch) * (1 - Math.exp(-5 * dt));
     if (open) {
-      const sink = -5.3 + flight.pitch * 1.35;
-      flight.rise += (sink - flight.rise) * (1 - Math.exp(-3.8 * dt));
-      const glideSpeed = 27 - flight.pitch * 4.5;
-      car.speed += (glideSpeed - car.speed) * (1 - Math.exp(-1.6 * dt));
+      // Diving builds speed. Pulling up uses that speed for lift, so a kart
+      // can climb out of a dive but cannot keep climbing at low airspeed.
+      const glideSpeed = 27 - flight.pitch * 10;
+      const speedResponse = flight.pitch > 0 ? 0.85 : 1.25;
+      car.speed += (glideSpeed - car.speed) * (1 - Math.exp(-speedResponse * dt));
+      const pitchAuthority = flight.pitch < 0 ? 8 : Math.max(0, car.speed - 15) * 1.35;
+      const verticalSpeed = -jump.sinkRate + flight.pitch * pitchAuthority;
+      flight.rise += (verticalSpeed - flight.rise) * (1 - Math.exp(-3 * dt));
     } else {
       flight.rise -= 14 * dt;
     }
     flight.y += flight.rise * dt;
-    if (flight.y <= 0 && car.x >= jump.landing && Math.abs(car.z - jump.centerZ) < jump.halfSpan) {
+    const aboveDeck = car.x >= jump.landing && Math.abs(car.z - jump.centerZ) < jump.halfSpan;
+    if (aboveDeck && flight.y <= track.profile(car.z, car.x).y) {
       car.flight = null;
       car.landingSquash = 1;
       car.speed = Math.min(31, car.speed);
+      if (flight.trickAt !== undefined && flight.time - flight.trickAt >= trickSpinSeconds) {
+        car.boostTime = 0.86;
+        car.boostColor = trickBoostColor;
+        car.boostCount++;
+        car.speed = trickBoostSpeed;
+      }
     } else if (flight.y <= 0) {
       // Recover a missed landing at the start of the catch deck.
       car.x = jump.landing + 2;
@@ -99,7 +171,7 @@ export function advanceProgress(track, car, previousX, previousZ, elapsed, dt) {
         car.started = true;
       }
       car.checkpoint = (car.checkpoint + 1) % gates.length;
-      if (car.lap === 3) car.finishedAt = elapsed - dt + t * dt;
+      if (car.lap === track.laps) car.finishedAt = elapsed - dt + t * dt;
     }
   }
   if (!car.started) {
@@ -182,6 +254,7 @@ export function resolveKartCollisions(track, cars) {
     for (const [i, a] of active.entries()) {
       for (let j = i + 1; j < active.length; j++) {
         const b = active[j];
+        if (a.powerTime > 0 || b.powerTime > 0) continue;
         if (Math.abs((a.flight?.y ?? 0) - (b.flight?.y ?? 0)) > 1.4) continue;
         const dx = b.x - a.x;
         const dz = b.z - a.z;

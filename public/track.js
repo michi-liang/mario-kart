@@ -1,5 +1,7 @@
-export const halfRoad = 8.28;
-export const wallOffset = halfRoad + 7.5;
+const roadWidthScale = 1.10;
+const baseHalfRoad = 8.28;
+export const halfRoad = baseHalfRoad * roadWidthScale;
+export const wallOffset = baseHalfRoad + 7.5;
 
 // Closed splines through each course. Sunbreak Coast has a long launch
 // straight, an inland S-bend, and a hairpin above the beach. Apex Stadium is a
@@ -22,11 +24,11 @@ const stadiumAnchors = [
 const summitAnchors = [
   [-240, -190], [-175, -192], [-90, -191], [-5, -190], [80, -195], [150, -178],
   [185, -146], [234, -145], [260, -115], [242, -67], [190, -48], [181, -16],
-  [204, 16], [184, 50], [150, 64], [150, 90], [150, 129], [150, 168],
+  [204, 16], [180, 47], [157, 66], [150, 94], [150, 129], [150, 168],
   [131, 199], [91, 214], [51, 200], [27, 169], [27, 128], [27, 101],
   [26, 61], [4, 26], [-40, 44], [-84, 51], [-107, 27], [-98, -10], [-123, -47],
-  [-167, -37], [-194, 4], [-232, 28], [-273, 5], [-287, -38], [-256, -67],
-  [-221, -64], [-197, -102], [-254, -120], [-315, -108], [-376, -127],
+  [-167, -37], [-194, 4], [-232, 28], [-273, 5], [-287, -38], [-253, -64],
+  [-222, -70], [-204, -85], [-209, -103], [-249, -118], [-315, -108], [-376, -127],
   [-410, -157], [-398, -184], [-370, -191], [-335, -191], [-285, -191],
 ];
 
@@ -37,7 +39,7 @@ const smooth = value => {
   return t * t * (3 - 2 * t);
 };
 
-export const summitJump = { launch: -349, landing: -227, centerZ: -191, halfSpan: 16, height: 24 };
+export const summitJump = { launch: -349, landing: -227, centerZ: -191, halfSpan: 16, height: 56, sinkRate: 9.8 };
 
 // The two straights and their left-hand hairpin share one vertical plane.
 // The driver steers across that plane using the same coordinates as a flat road.
@@ -52,14 +54,17 @@ function summitSurface(z, x) {
       approach * (1 - runway);
     const fade = clamp01((74 - z) / 24);
     const weight = smooth(fade);
-    const y = elevation * weight;
+    const rolling = x > -145 && x < 4 ? (x + 145) * Math.PI / 149 : 0;
+    const rollFade = smooth((centerZ + 37 - z) / 19);
+    const y = elevation * weight + 4.5 * rollFade * Math.sin(rolling) ** 2;
     const slope = (x < launch ? height - approach - 3 + lip : -approach) * weight *
       (z < centerZ + 63 && z > centerZ + halfSpan ?
         -6 * ((centerZ + 63 - z) / (63 - halfSpan)) * (1 - (centerZ + 63 - z) / (63 - halfSpan)) / (63 - halfSpan) : 0) -
       elevation * 6 * fade * (1 - fade) / 24;
     const span = Math.hypot(1, slope);
     return { y, z, sin: slope / span, cos: 1 / span, hover: 0,
-      slopeX: x > launch - 23 && x < launch && z < centerZ + halfSpan ? 0.12 : 0 };
+      slopeX: x > launch - 23 && x < launch && z < centerZ + halfSpan ? 0.12 :
+        rollFade * 4.5 * Math.PI / 149 * Math.sin(2 * rolling) };
   }
   const radius = 18;
   const corner = Math.PI * radius / 2;
@@ -79,7 +84,7 @@ function spline(a, b, c, d, t) {
     (3 * b - a - 3 * c + d) * t ** 3);
 }
 
-function buildTrack({ id, name, tagline, anchors, startIndex, itemRows, profile = flatSurface, narrowed = [], jump }) {
+function buildTrack({ id, name, tagline, anchors, startIndex, itemRows, laps = 3, profile = flatSurface, narrowed = [], jump }) {
   const points = anchors.flatMap((point, i) => {
     const previous = anchors[(i + anchors.length - 1) % anchors.length];
     const next = anchors[(i + 1) % anchors.length];
@@ -119,7 +124,7 @@ function buildTrack({ id, name, tagline, anchors, startIndex, itemRows, profile 
     const progress = ((index % count) + count) % count / count;
     let width = halfRoad;
     for (const [start, end] of narrowed) {
-      width -= 2.45 * smooth(Math.min(progress - start, end - progress) / 0.024);
+      width -= 2.45 * roadWidthScale * smooth(Math.min(progress - start, end - progress) / 0.024);
     }
     return width;
   }
@@ -261,7 +266,7 @@ function buildTrack({ id, name, tagline, anchors, startIndex, itemRows, profile 
   }
 
   return {
-    id, name, tagline, count, step, courseLength, centerline, start, startIndex,
+    id, name, tagline, count, step, courseLength, centerline, start, startIndex, laps,
     finish: startIndex + 10, itemRows, jump, elevated: profile !== flatSurface, bounds: { minX, maxX, minZ, maxZ },
     coursePoint, nearestRoad, roadDistance, wallSegments, mapPoint, profile, surfacePoint, widthAt,
   };
@@ -278,7 +283,7 @@ export const tracks = {
   }),
   summit: buildTrack({
     id: 'summit', name: 'Summit Circuit', tagline: 'Switchbacks, vertical climbs and a high U-turn',
-    anchors: summitAnchors, startIndex: 27, itemRows: [0.06, 0.24, 0.39, 0.57, 0.72, 0.88],
+    anchors: summitAnchors, startIndex: 27, laps: 2, itemRows: [0.06, 0.24, 0.39, 0.57, 0.72, 0.88],
     profile: summitSurface, narrowed: [[0.18, 0.30], [0.63, 0.73], [0.79, 0.92]], jump: summitJump,
   }),
 };

@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/style.css">
   <script type="module" src="/drive.js"></script>
 </head>
-<body>
+<body class="home">
   <canvas id="course-film" aria-hidden="true"></canvas>
   <main class="garage">
     <header class="masthead">
@@ -19,19 +19,38 @@
       <button id="back" class="secondary" type="button" hidden>Menu</button>
     </header>
     <div class="layout">
-      <section id="menu" class="screen menu">
-        <h2>Choose a mode</h2>
-        <div class="mode-options">
-          <button class="mode-option" id="test-mode" type="button"><strong>Test mode</strong><span>Solo three-lap race</span></button>
-          <button class="mode-option" id="play-mode" type="button"><strong>Play mode</strong><span>12 drivers · Three laps</span></button>
-        </div>
+      <section id="menu" class="menu" aria-label="Game modes">
+        <button class="mode-option" id="single-mode" type="button"><strong>Single Player</strong><span>Race against 11 CPU drivers</span></button>
+        <button class="mode-option" id="play-mode" type="button"><strong>Multiplayer</strong><span>Up to four phone controllers</span></button>
+        <button class="mode-option" id="test-mode" type="button"><strong>Developer Mode</strong><span>Solo practice with a speedometer</span></button>
       </section>
-      <section id="selection" class="screen selection" hidden>
-        <div class="selection-header"><h2>Choose a driver</h2><button id="start" class="primary" type="button">Start</button></div>
-        <p id="lobby-help"></p>
-        <h3 class="picker-title">Track</h3>
+      <section class="pairing" id="pairing" aria-labelledby="pair-heading" hidden>
+        <h2 id="pair-heading" tabindex="-1">Join with your phone</h2>
+        <div class="status" id="phone-status" role="status"><i></i><span>Waiting for phones</span></div>
+        <a class="qr" id="pair-link" target="_blank" rel="noreferrer" aria-label="Open the phone controller">
+          <img id="qr" width="216" height="216" alt="Phone controller pairing QR code">
+        </a>
+        <p id="pair-note" class="pair-note" aria-live="polite"></p>
+        <button id="copy" class="secondary" type="button">Copy controller link</button>
+        <div id="seats" class="seats" aria-label="Controller seats"></div>
+        <button id="continue-to-tracks" class="primary" type="button">Choose a track</button>
+      </section>
+      <section id="track-selection" class="screen selection" aria-labelledby="track-heading" hidden>
+        <div class="selection-header">
+          <h2 id="track-heading" tabindex="-1">Choose a track</h2>
+          <button id="continue-to-drivers" class="primary" type="button">Next</button>
+        </div>
         <div id="track-picker" class="track-picker" role="radiogroup" aria-label="Choose a track"></div>
-        <h3 class="picker-title">Driver</h3>
+      </section>
+      <section id="selection" class="screen selection" aria-labelledby="driver-heading" hidden>
+        <div class="selection-header">
+          <h2 id="driver-heading" tabindex="-1">Choose a driver</h2>
+          <div class="selection-actions">
+            <button id="back-to-tracks" class="secondary" type="button">Change track</button>
+            <button id="start" class="primary" type="button">Start race</button>
+          </div>
+        </div>
+        <p id="lobby-help"></p>
         <div id="roster" class="roster"></div>
       </section>
       <section id="race" class="drive" aria-label="Driving simulator" hidden>
@@ -44,19 +63,9 @@
           <div id="race-countdown" class="race-countdown" role="status"></div>
         </div>
         <footer class="drive-footer">
-          <span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or arrows · <kbd>Shift</kbd> drift · <kbd>E</kbd> use item</span>
+          <span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or arrows · <kbd>Shift</kbd> drift / trick · <kbd>E</kbd> use item</span>
         </footer>
       </section>
-      <aside class="pairing" id="pairing">
-        <div class="status" id="phone-status" role="status"><i></i><span>Waiting for phones</span></div>
-        <h2>Join with your phone</h2>
-        <a class="qr" id="pair-link" target="_blank" rel="noreferrer" aria-label="Open the phone controller">
-          <img id="qr" width="180" height="180" alt="Phone controller pairing QR code">
-        </a>
-        <p id="pair-note" class="pair-note" aria-live="polite"></p>
-        <button id="copy" class="secondary copy" type="button">Copy controller link</button>
-        <div id="seats" class="seats"></div>
-      </aside>
       <aside id="race-info" class="pairing race-info" hidden>
         <h2>Leaderboard</h2>
         <ol id="standings" class="standings"></ol>
@@ -66,7 +75,45 @@
           <path id="map-course" /><g id="map-pickups"></g><g id="map-cars"></g>
         </svg>
       </aside>
+      <section id="results" class="results" aria-labelledby="results-heading" hidden>
+        <header class="results-header">
+          <p id="results-track"></p>
+          <h2 id="results-heading" tabindex="-1">Race Results</h2>
+        </header>
+        <ol id="results-order" class="results-order"></ol>
+        <div class="results-art" aria-hidden="true">
+          <svg viewBox="0 0 420 420">
+            <defs>
+              <linearGradient id="cup-gold" x2="1" y2="1">
+                <stop stop-color="#fff2ae"/><stop offset=".31" stop-color="#ffd46b"/>
+                <stop offset=".64" stop-color="#e59024"/><stop offset="1" stop-color="#9f4618"/>
+              </linearGradient>
+              <linearGradient id="cup-shadow" x2="0" y2="1">
+                <stop stop-color="#203d69"/><stop offset="1" stop-color="#0a1836"/>
+              </linearGradient>
+            </defs>
+            <g fill="none" stroke="#fdf1bd" stroke-width="4" opacity=".83">
+              <path d="M69 42v40m-20-20h40m253 87v38m-19-19h38M88 287v26m-13-13h26m245-220v19m-9-9h19"/>
+            </g>
+            <g fill="#80eddf"><path d="m102 110 11-7 9 14-10 7zm222 118 14-7 8 14-13 7zM64 219l9 14-9 6-9-14z"/></g>
+            <g fill="#ffd67b"><path d="m315 43 15-15 7 7-15 15zm-22 237 12 12-8 8-12-12zM66 137l8 9-8 8-8-9z"/></g>
+            <ellipse cx="210" cy="380" rx="133" ry="18" fill="#0a1836" opacity=".5"/>
+            <g stroke="#6a3218" stroke-width="4" stroke-linejoin="round">
+              <path fill="url(#cup-gold)" d="M196 207h28v76l29 37h-86l29-37z"/>
+              <path fill="url(#cup-shadow)" d="M152 320h116l25 48H127z"/>
+              <path fill="url(#cup-gold)" d="M166 335h88v20h-88z"/>
+              <path fill="none" stroke="#a85b25" stroke-width="23" d="M150 99H102v24c0 43 31 67 70 69m98-93h48v24c0 43-31 67-70 69"/>
+              <path fill="none" stroke="#ffd875" stroke-width="13" d="M150 96H102v24c0 43 31 67 70 69m98-93h48v24c0 43-31 67-70 69"/>
+              <path fill="url(#cup-gold)" d="M129 78h162l-12 68c-7 50-31 76-69 76s-62-26-69-76z"/>
+              <path fill="#ffe8a2" d="M124 69h172v19H124z"/>
+              <path fill="#fff2b8" d="m210 113 11 22 25 4-18 18 4 25-22-12-22 12 4-25-18-18 25-4z"/>
+            </g>
+          </svg>
+        </div>
+        <footer class="results-footer"><button id="results-continue" class="primary" type="button">Continue</button></footer>
+      </section>
     </div>
   </main>
+  <div id="screen-fade" aria-hidden="true" hidden></div>
 </body>
 </html>

@@ -18,6 +18,7 @@ export function createRaceAudio() {
   let summitBuffer;
   let summitSource;
   let summitUnavailable = false;
+  let boostNoise;
 
   function preloadSummit() {
     if (!context || summitMusic) return;
@@ -68,6 +69,29 @@ export function createRaceAudio() {
     voice.stop(at + duration + 0.01);
   }
 
+  function fireBurst(at) {
+    const duration = 0.38;
+    if (!boostNoise) {
+      boostNoise = context.createBuffer(1, Math.ceil(context.sampleRate * duration), context.sampleRate);
+      const samples = boostNoise.getChannelData(0);
+      for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+    }
+    const noise = context.createBufferSource();
+    noise.buffer = boostNoise;
+    const filter = context.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 0.65;
+    filter.frequency.setValueAtTime(470, at);
+    filter.frequency.exponentialRampToValueAtTime(1700, at + 0.065);
+    filter.frequency.exponentialRampToValueAtTime(240, at + duration);
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0.001, at);
+    gain.gain.exponentialRampToValueAtTime(0.52, at + 0.032);
+    gain.gain.exponentialRampToValueAtTime(0.001, at + duration);
+    noise.connect(filter).connect(gain).connect(master);
+    noise.start(at);
+  }
+
   function cue(name) {
     if (muted || context?.state !== 'running') return;
     const at = context.currentTime;
@@ -75,15 +99,29 @@ export function createRaceAudio() {
       case 'count': tone(at, 440, 0.19, 0.3, 'square'); break;
       case 'go': tone(at, 880, 0.37, 0.3, 'square', 1046); break;
       case 'box': tone(at, 520, 0.18, 0.22, 'sine', 1046); break;
+      case 'roll': tone(at, 950, 0.045, 0.085, 'triangle', 640); break;
       case 'ready':
         [660, 880, 1100].forEach((note, i) => tone(at + i * 0.05, note, 0.14, 0.17));
         break;
       case 'use': tone(at, 340, 0.19, 0.18, 'triangle', 1150); break;
-      case 'boost': tone(at, 120, 0.34, 0.24, 'sawtooth', 520); break;
+      case 'trick': tone(at, 380, 0.25, 0.16, 'sine', 1420); break;
+      case 'boost':
+        fireBurst(at);
+        tone(at, 95, 0.21, 0.13, 'triangle', 185);
+        break;
       case 'hit': tone(at, 150, 0.29, 0.32, 'sawtooth', 42); break;
       case 'wall': tone(at, 90, 0.11, 0.15, 'square', 45); break;
       case 'finish':
         [523, 659, 784, 1046].forEach((note, i) => tone(at + i * 0.085, note, 0.21, 0.21));
+        break;
+      case 'fanfare':
+        for (const [offset, length, notes] of [
+          [0, 0.16, [67, 60, 48]], [0.18, 0.16, [72, 64, 55]], [0.36, 0.20, [76, 67, 60]],
+          [0.61, 0.27, [79, 72, 55]], [0.94, 0.28, [77, 74, 59]], [1.26, 0.92, [84, 76, 72, 60]],
+        ]) {
+          for (const [i, note] of notes.entries()) tone(at + offset, frequency(note), length, i ? 0.085 : 0.23);
+          tone(at + offset, 156, 0.12, 0.14, 'sine', 54);
+        }
         break;
     }
   }

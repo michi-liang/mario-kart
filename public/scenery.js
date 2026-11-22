@@ -109,23 +109,143 @@ function chunks(faces, size) {
   return groups;
 }
 
+function summitLandscape(track, streams) {
+  const terrain = [];
+  const trees = [];
+  const peaks = [
+    [-180, -272, 64, 78], [-72, -110, 58, 76], [45, -283, 118, 100],
+    [93, -242, 78, 79], [105, -146, 66, 66], [179, -271, 156, 108],
+    [294, -216, 130, 104], [343, -21, 136, 94],
+    [242, 108, 151, 105], [95, 153, 146, 112], [-76, 158, 128, 105],
+    [-223, 113, 102, 104], [-354, -24, 117, 119], [-465, -148, 128, 122],
+    [-405, -249, 96, 87], [-250, -288, 104, 79],
+  ];
+  const { launch, landing, centerZ, halfSpan } = track.jump;
+  const route = new Map();
+  for (let i = 0; i < track.count; i += 4) {
+    const [x, , z] = track.centerline[i];
+    if (x > launch && x < landing && Math.abs(z - centerZ) < halfSpan) continue;
+    const position = track.surfacePoint(x, z);
+    const key = Math.floor(position[2] / 32);
+    if (!route.has(key)) route.set(key, []);
+    route.get(key).push(position);
+  }
+  const streamX = (stream, z) => stream.x + 7 * Math.sin((z - stream.z) / 21);
+  function heightAt(x, z) {
+    let height = -7;
+    for (const [cx, cz, peak, spread] of peaks) {
+      const distance = Math.hypot(x - cx, (z - cz) * 1.18) / spread;
+      height = Math.max(height, peak * Math.max(0, 1 - distance) ** 0.85 - 10);
+    }
+    height += 5 * Math.sin(x * 0.037 + z * 0.025) + 3 * Math.cos(z * 0.051 - x * 0.031);
+    let ceiling = Infinity;
+    let shelf = -Infinity;
+    const row = Math.floor(z / 32);
+    for (let key = row - 2; key <= row + 2; key++) {
+      for (const [cx, y, cz] of route.get(key) ?? []) {
+        const dx = x - cx;
+        const dz = z - cz;
+        if (Math.abs(dx) > 62 || Math.abs(dz) > 62) continue;
+        const distance = Math.hypot(dx, dz);
+        if (distance < 40) ceiling = Math.min(ceiling, y - 4 + Math.max(0, distance - 27) * 1.35);
+        if (y > 5 && distance < 62) shelf = Math.max(shelf, y - 4 - distance * 0.66);
+      }
+    }
+    height = Math.max(height, shelf);
+    if (x > launch + 8 && x < landing + 18 && Math.abs(z - centerZ) < 42) {
+      const cut = Math.min(1, (x - launch - 8) / 13, (landing + 18 - x) / 18, (42 - Math.abs(z - centerZ)) / 12);
+      height += (Math.min(height, -13) - height) * cut;
+    }
+    for (const stream of streams) {
+      const along = Math.abs(z - stream.z);
+      const across = Math.abs(x - streamX(stream, z));
+      if (along < 66 && across < 20) height = Math.min(height, -11 + across * 0.49 + Math.max(0, along - 54) * 0.6);
+    }
+    return Math.min(height, ceiling);
+  }
+
+  const step = 17;
+  const rows = 37;
+  const columns = 59;
+  const vertices = Array.from({ length: rows + 1 }, (_, row) => Array.from({ length: columns + 1 }, (_, column) => {
+    const x = -570 + column * step;
+    const z = -345 + row * step;
+    return [x, heightAt(x, z), z];
+  }));
+  function addFacet(a, b, c) {
+    const height = (a[1] + b[1] + c[1]) / 3;
+    const grade = Math.max(a[1], b[1], c[1]) - Math.min(a[1], b[1], c[1]);
+    const colors = height > 101 ? ['#d8e4e6', '#b8ccd5', '#eff2ec'] : height > 55 || grade > 14 ?
+      ['#687984', '#7b8a91', '#566a75'] : height > 30 || grade > 8 ?
+        ['#6c956c', '#4e856b', '#85a46e'] : ['#70ac54', '#579650', '#8cb95d'];
+    const shade = Math.floor(hash(a[0] * 4.7 + b[2] * 1.13 + c[1]) * colors.length);
+    terrain.push({ color: colors[shade], points: [a, b, c] });
+  }
+  for (let row = 0; row < rows; row++) for (let column = 0; column < columns; column++) {
+    const a = vertices[row][column], b = vertices[row][column + 1];
+    const c = vertices[row + 1][column], d = vertices[row + 1][column + 1];
+    addFacet(a, b, d);
+    addFacet(a, d, c);
+    if ((row * 2 + column) % 4 || a[1] < -6 || a[1] > 62 ||
+        Math.max(Math.abs(a[1] - b[1]), Math.abs(a[1] - c[1])) > 10 ||
+        track.roadDistance(a[0], a[2]) < 23) continue;
+    const [x, y, z] = a;
+    const tree = { x, y: y - 0.3, z, h: 5 + hash(x + z * 1.24) * 7 };
+    tree.mesh = treeMesh(tree);
+    trees.push(tree);
+  }
+  for (const stream of streams) {
+    for (let z = stream.z - 54; z < stream.z + 54; z += 9) {
+      const a = streamX(stream, z), b = streamX(stream, z + 9);
+      terrain.push({ color: '#3db7cf', points: [[a - 7, -6, z], [a + 7, -6, z],
+        [b + 7, -6, z + 9], [b - 7, -6, z + 9]] });
+    }
+  }
+  return { terrain, trees };
+}
+
+function summitTunnel(point, start, end) {
+  const props = [];
+  const inner = [[-16, 0], [-16, 4], [-12, 7.6], [-6, 10], [0, 10.8],
+    [6, 10], [12, 7.6], [16, 4], [16, 0]];
+  const outer = [[-25, -3], [-25, 6], [-20, 14], [-11, 18], [0, 21],
+    [10, 19], [19, 14], [24, 6], [25, -3]];
+  for (let i = start; i < end; i += 3) {
+    const next = Math.min(i + 3, end);
+    const mesh = [];
+    for (const [ring, colors] of [[inner, ['#515768', '#626a79']], [outer, ['#73817e', '#84908a', '#63748a']]]) {
+      for (let j = 0; j + 1 < ring.length; j++) {
+        mesh.push({ color: colors[(j + i) % colors.length], points: [point(i, ...ring[j]),
+          point(i, ...ring[j + 1]), point(next, ...ring[j + 1]), point(next, ...ring[j])] });
+      }
+    }
+    if (i === start || next === end) {
+      const portal = i === start ? i : next;
+      for (let j = 0; j + 1 < inner.length; j++) mesh.push({ color: '#98a09a',
+        points: [point(portal, ...inner[j]), point(portal, ...inner[j + 1]),
+          point(portal, ...outer[j + 1]), point(portal, ...outer[j])] });
+    }
+    for (const side of [-1, 1]) mesh.push({ color: '#ffe4a4', points: [point(i, side * 15.87, 2.6),
+      point(i, side * 15.87, 3), point(i + 1, side * 15.87, 3), point(i + 1, side * 15.87, 2.6)] });
+    const [x, y, z] = point(i, 0, 6);
+    props.push({ x, y, z, mesh, range: 185, pad: 34 });
+  }
+  return props;
+}
+
 function summitScene(track) {
   const road = [];
   const props = [];
-  const terrain = [];
   const gantry = [];
-  const supports = [];
-  for (let z = -340; z < 360; z += 35) {
-    for (let x = -490; x < 420; x += 35) {
-      const color = hash(x * 9 + z) > 0.5 ? '#587a65' : '#617d68';
-      terrain.push({ color, points: [[x, -3, z], [x + 35, -3, z],
-        [x + 35, -3, z + 35], [x, -3, z + 35]] });
-    }
-  }
+  const crossings = [[27, -193], [218, -147]].map(([x, z]) =>
+    ({ x, z, index: Math.round(track.nearestRoad(x, z).index) }));
+  const { terrain, trees } = summitLandscape(track, crossings);
   const point = (index, offset, lift = 0) => {
     const [x, , z] = track.coursePoint(index, offset);
     return track.surfacePoint(x, z, lift);
   };
+  const tunnel = Math.round(track.nearestRoad(96, -194).index);
+  props.push(...summitTunnel(point, tunnel - 10, tunnel + 14));
   for (let i = 0; i < track.count; i++) {
     const left = track.widthAt(i);
     const nextWidth = track.widthAt(i + 1);
@@ -134,38 +254,69 @@ function summitScene(track) {
     const { launch, landing, centerZ, halfSpan } = track.jump;
     if (Math.abs((logicalZ + nextZ) / 2 - centerZ) < halfSpan &&
         Math.max(logicalX, nextX) > launch && Math.min(logicalX, nextX) < landing) continue;
-    const { hover, y, cos } = track.profile(logicalZ, logicalX);
+    const { hover, y } = track.profile(logicalZ, logicalX);
     const lit = hover > 0.35;
+    const bridge = crossings.some(crossing => Math.abs(i - crossing.index) <= 8);
     const ramp = Math.abs(logicalZ - centerZ) < halfSpan && logicalX > launch - 14 && logicalX < launch;
     const add = (a, b, c, d, color, lift = 0) => {
       road.push({ color, points: [point(i, a, lift), point(i, b, lift),
         point(i + 1, c, lift), point(i + 1, d, lift)] });
     };
-    add(-wallOffset, wallOffset, wallOffset, -wallOffset, y > 1 ? '#455568' : '#819968', -0.20);
-    add(-left, left, nextWidth, -nextWidth, ramp ? (i % 4 ? '#2684a7' : '#afede7') : lit ? '#2e536c' : '#3b4857');
-    const edge = lit ? (i % 3 ? '#73f2e8' : '#398aaf') : (i % 2 ? '#eaf1df' : '#d18260');
+    if (!bridge) {
+      for (const side of [-1, 1]) {
+        road.push({ color: '#8ea958', points: [point(i, side * wallOffset, -0.20), point(i, side * left),
+          point(i + 1, side * nextWidth), point(i + 1, side * wallOffset, -0.20)] });
+      }
+    }
+    const color = bridge ? (i % 2 ? '#9a7553' : '#866647') : ramp ? (i % 4 ? '#2684a7' : '#afede7') :
+      lit ? '#2e536c' : i % 4 < 2 ? '#46494a' : '#474b4b';
+    add(-left, left, nextWidth, -nextWidth, color);
+    const edge = bridge ? '#caad78' : lit ? (i % 3 ? '#73f2e8' : '#398aaf') :
+      i % 4 < 2 ? '#ff6655' : '#fff1bf';
     add(-left, -left + 0.56, -nextWidth + 0.56, -nextWidth, edge, 0.012);
     add(left - 0.56, left, nextWidth, nextWidth - 0.56, edge, 0.012);
-    if (i % 5 === 0) add(-0.11, 0.11, 0.11, -0.11, lit ? '#81d8df' : '#a6afb7', 0.014);
-    if (y > 10 && cos > 0.9 && i % 9 === 0) {
-      const [x, height, z] = point(i, 0);
+    if (lit && i % 5 === 0) add(-0.11, 0.11, 0.11, -0.11, '#81d8df', 0.014);
+    if (bridge) {
+      const [x, y, z] = point(i, 0);
       const mesh = [];
       for (const side of [-1, 1]) {
-        box(mesh, value => value, x + side * 5 - 1, -0.3, z - 1, 2, height + 0.1, 2,
-          ['#34475a', '#40566a', '#2d3c4c']);
+        const rail = side * wallOffset;
+        mesh.push({ color: '#bc9c6b', points: [point(i, rail, 1.05), point(i + 1, rail, 1.05),
+          point(i + 1, rail, 1.4), point(i, rail, 1.4)] });
+        if (i % 2 === 0) mesh.push({ color: '#6c5741', points: [point(i, rail, 0), point(i + 1, rail, 0),
+          point(i + 1, rail, 1.45), point(i, rail, 1.45)] });
       }
-      supports.push({ x, y: height / 2, z, mesh, range: 220, pad: height / 2 + 10 });
+      add(-wallOffset, -left, -nextWidth, -wallOffset, '#7c694d', -0.025);
+      add(left, wallOffset, wallOffset, nextWidth, '#7c694d', -0.025);
+      props.push({ x, y, z, mesh, range: 138, pad: 17 });
+    } else if (!lit && y > 4) {
+      for (const side of [-1, 1]) {
+        const a = point(i, wallOffset * side, -0.22);
+        const b = point(i + 1, wallOffset * side, -0.22);
+        const drop = Math.min(25, Math.max(9, y * 0.55));
+        const c = point(i + 1, (wallOffset + 10) * side, -drop);
+        const d = point(i, (wallOffset + 10) * side, -drop);
+        road.push({ color: i % 4 < 2 ? '#68757b' : '#738078', points: [a, b, c, d] });
+      }
+      if (ramp && nextX >= launch - track.step) {
+        const a = point(i + 1, -wallOffset, -0.22);
+        const b = point(i + 1, wallOffset, -0.22);
+        const c = [b[0], -10, b[2] + 7];
+        const d = [a[0], -10, a[2] - 7];
+        road.push({ color: '#5b6b76', points: [a, b, c, d] });
+      }
     }
   }
   for (const [[ax, az], [bx, bz]] of track.wallSegments) {
     if (Math.abs((az + bz) / 2 - track.jump.centerZ) < track.jump.halfSpan + 2 &&
         Math.max(ax, bx) > track.jump.launch && Math.min(ax, bx) < track.jump.landing) continue;
+    if (crossings.some(crossing => Math.hypot(crossing.x - (ax + bx) / 2, crossing.z - (az + bz) / 2) < 25)) continue;
     const a = track.surfacePoint(ax, az);
     const b = track.surfacePoint(bx, bz);
     const at = track.surfacePoint(ax, az, 1.35);
     const bt = track.surfacePoint(bx, bz, 1.35);
     props.push({ x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, z: (a[2] + b[2]) / 2,
-      range: 190, pad: 5, mesh: [{ points: [a, b, bt, at], color: '#9daab8' }] });
+      range: 190, pad: 5, mesh: [{ points: [a, b, bt, at], color: '#989a8b' }] });
   }
   const finishStart = road.length;
   finishTiles(road, track, '#242d42', '#f1fbf3');
@@ -174,12 +325,12 @@ function summitScene(track) {
   }
   const place = finishFrame(track);
   for (const x of [-9, 8.2]) box(gantry, place, x, 0, -0.35, 0.8, 5, 0.7, ['#465a72']);
-  box(gantry, place, -9, 4.8, -0.45, 18, 1.2, 0.9, ['#366b7a', '#4a8195']);
+  box(gantry, place, -9, 4.8, -0.45, 18, 1.2, 0.9, ['#ffbe33', '#ffdb69']);
   measure(terrain);
   measure(road);
   return {
-    sky: ['#68adde', '#d0e8ec'], ridge: ['#98b6c2', '#7296a1'], ridgeScale: 1.4, ground: '#526f5f',
-    terrain, road, trees: [], gantry, props, supports,
+    sky: ['#47a9ff', '#def7ff'], ridge: ['#98c0d3', '#7296a1'], ridgeScale: 1.4, ground: '#58884f',
+    terrain, road, trees, gantry, props,
     filmShots: [
       { progress: 0.055, side: -1, height: 16, sweep: 17 },
       { progress: 0.49, side: 1, height: 29, sweep: 16 },
@@ -271,14 +422,14 @@ function coastScene(track) {
   };
 }
 
-function treeMesh({ x, z, h }) {
+function treeMesh({ x, y: base = 0, z, h }) {
   const mesh = [];
-  const place = ([dx, y, dz]) => [x + dx, y, z + dz];
+  const place = ([dx, y, dz]) => [x + dx, base + y, z + dz];
   box(mesh, place, -0.12, 0, -0.12, 0.24, h * 0.55, 0.24, ['#5b5343']);
   for (let layer = 0; layer < 2; layer++) {
     const r = h * (0.28 - layer * 0.07);
-    const y = h * (0.25 + layer * 0.27);
-    const top = [x, h * (0.76 + layer * 0.24), z];
+    const y = base + h * (0.25 + layer * 0.27);
+    const top = [x, base + h * (0.76 + layer * 0.24), z];
     const corners = [[x - r, y, z - r], [x + r, y, z - r], [x + r, y, z + r], [x - r, y, z + r]];
     for (let i = 0; i < 4; i++) {
       mesh.push({ points: [corners[i], corners[(i + 1) % 4], top],

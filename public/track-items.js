@@ -1,10 +1,14 @@
 import { halfRoad, wallOffset } from './track.js';
+import { roadTopSpeed } from './race.js';
 
 export const mushroomColor = '#f46565';
-export const mushroomTopSpeed = 29;
+export const goldenMushroomColor = '#ffce55';
+export const goldenMushroomSeconds = 6.5;
+export const mushroomTopSpeed = roadTopSpeed * 1.25;
+export const bulletTopSpeed = 40;
 export const bananaSpinTime = 0.82;
 export const itemInfo = {
-  banana: { label: 'Banana', color: '#f9e753', icon: '🍌', uses: 1 },
+  banana: { label: 'Banana', color: '#f9e753', icon: 'banana', uses: 1 },
   green: { label: 'Green shell', color: '#83f879', icon: '◆', uses: 1 },
   red: { label: 'Red shell', color: '#ff777a', icon: '◆', uses: 1 },
   mushroom: { label: 'Red mushroom', color: mushroomColor, icon: '🍄', uses: 1 },
@@ -13,15 +17,17 @@ export const itemInfo = {
   fire: { label: 'Fireball', color: '#ffae54', icon: '🔥', uses: 3 },
   boomerang: { label: 'Boomerang', color: '#ffd28c', icon: '🪃', uses: 3 },
   blast: { label: 'Boom box', color: '#ff8cce', icon: '♫', uses: 1 },
+  gold: { label: 'Golden Mushroom', color: goldenMushroomColor, icon: 'gold', uses: 1 },
+  bullet: { label: 'Bullet Bill', color: '#94bcff', icon: 'bullet', uses: 1 },
+  star: { label: 'Rainbow Star', color: '#ffed71', icon: 'star', uses: 1 },
 };
 
-// Mario Kart 8 VS distance tables inform these four rank buckets. The weights
-// are renormalized to the supported pool, with mushroom variants folded together.
+// Interpolate between four points on the grid so each place has its own odds.
 const rankWeights = [
-  [60, 50, 5, 0, 0, 0, 0, 0, 5],
-  [15, 25, 45, 20, 10, 5, 10, 20, 10],
-  [5, 15, 35, 55, 10, 2, 10, 5, 10],
-  [0, 10, 18, 115, 0, 5, 5, 5, 0],
+  [42, 36, 12, 0, 0, 0, 0, 0, 10, 0, 0, 0],
+  [12, 15, 22, 17, 6, 4, 6, 8, 6, 2, 0, 2],
+  [3, 5, 12, 20, 5, 9, 6, 7, 5, 10, 9, 9],
+  [0, 1, 6, 12, 3, 15, 4, 4, 4, 16, 20, 15],
 ];
 const itemTypes = Object.keys(itemInfo);
 const soloWeights = itemTypes.map((_, index) => rankWeights.reduce((sum, row) => sum + row[index], 0));
@@ -29,7 +35,11 @@ const rollSeconds = 190 / 60;
 const wallClearance = wallOffset - 0.65;
 
 export function rollItem(place, fieldSize, random = Math.random) {
-  const weights = fieldSize < 2 ? soloWeights : rankWeights[Math.round((place - 1) * 3 / (fieldSize - 1))];
+  const rank = (place - 1) * (rankWeights.length - 1) / Math.max(1, fieldSize - 1);
+  const lower = rankWeights[Math.floor(rank)];
+  const upper = rankWeights[Math.ceil(rank)];
+  const blend = rank % 1;
+  const weights = fieldSize < 2 ? soloWeights : lower.map((weight, i) => weight + (upper[i] - weight) * blend);
   let ticket = random() * weights.reduce((sum, weight) => sum + weight, 0);
   for (const [index, weight] of weights.entries()) {
     if (ticket < weight) return itemTypes[index];
@@ -38,8 +48,36 @@ export function rollItem(place, fieldSize, random = Math.random) {
   return 'mushroom';
 }
 
+export function rearThreat(car, objects) {
+  if (car.finishedAt !== null || car.flight || car.powerTime > 0) return null;
+  const forwardX = Math.sin(car.yaw);
+  const forwardZ = Math.cos(car.yaw);
+  let best = null;
+  let earliest = 1.6;
+  for (const item of objects) {
+    if (item.owner === car.number || item.hits?.has(car.number)) continue;
+    const x = item.x - car.x;
+    const z = item.z - car.z;
+    const behind = -(x * forwardX + z * forwardZ);
+    if (behind < 1 || behind > 72) continue;
+    const { vx = 0, vz = 0 } = item;
+    const forwardSpeed = vx * forwardX + vz * forwardZ;
+    const closingSpeed = forwardSpeed - car.speed;
+    if (forwardSpeed <= 1 || closingSpeed <= 1) continue;
+    const time = behind / closingSpeed;
+    if (time >= earliest) continue;
+    const across = x * forwardZ - z * forwardX;
+    const projectedAcross = across + (vx * forwardZ - vz * forwardX) * time;
+    const radius = item.type === 'blue' || item.type === 'bomb' ? 6.5 : 3.8;
+    if (Math.abs(projectedAcross) > radius) continue;
+    earliest = time;
+    best = { type: item.type, side: across < -1.8 ? 'left' : across > 1.8 ? 'right' : 'center' };
+  }
+  return best;
+}
+
 function spinOut(car, type, duration = bananaSpinTime) {
-  if (car.spinTime > 0 || car.finishedAt !== null) return;
+  if (car.spinTime > 0 || car.finishedAt !== null || car.powerTime > 0) return;
   const { label, color } = itemInfo[type];
   car.spinTime = duration;
   car.speed *= 0.48;
@@ -48,6 +86,13 @@ function spinOut(car, type, duration = bananaSpinTime) {
   car.charge = 0;
   car.spinLabel = label.toUpperCase();
   car.spinColor = color;
+}
+
+function boostMushroom(car, color) {
+  car.boostColor = color;
+  car.boostTime = Math.max(car.boostTime, 1.2);
+  car.speed = Math.min(mushroomTopSpeed, Math.max(car.speed + 4, mushroomTopSpeed * 0.88));
+  car.boostCount = (car.boostCount ?? 0) + 1;
 }
 
 function firstTarget(item, cars, travel, radius = 1.6) {
@@ -132,8 +177,9 @@ export function createTrackItems(track, random = Math.random) {
   let nextId = rows.length * 5;
 
   function blast(type, owner, x, z, now, cars, radius, shield = false) {
-    effects.push({ id: nextId++, type: 'wave', x, z, radius, born: now,
-      color: itemInfo[type].color, expires: now + 0.4 });
+    const sphere = type === 'blue';
+    effects.push({ id: nextId++, type: sphere ? 'sphere' : 'wave', x, z, radius, born: now,
+      color: itemInfo[type].color, expires: now + (sphere ? 0.58 : 0.4) });
     for (const car of cars) {
       if (car.number !== owner && Math.hypot(car.x - x, car.z - z) <= radius) spinOut(car, type, 1.15);
     }
@@ -153,14 +199,27 @@ export function createTrackItems(track, random = Math.random) {
       return;
     }
     const type = car.item;
-    if (!type || now < car.nextItemUse || car.boomerangOut) return;
+    if (!type || now < car.nextItemUse || car.boomerangOut || car.powerTime > 0) return;
+    if (type === 'gold') {
+      if (!car.goldUntil) car.goldUntil = now + goldenMushroomSeconds;
+      if (now >= car.goldUntil) return;
+      car.nextItemUse = now + 0.48;
+      boostMushroom(car, goldenMushroomColor);
+      return;
+    }
     car.itemUses--;
     if (!car.itemUses) car.item = null;
     car.nextItemUse = now + 0.22;
     if (type === 'mushroom') {
-      car.boostColor = mushroomColor;
-      car.boostTime = Math.max(car.boostTime, 1.2);
-      car.speed = Math.max(0, car.speed) + 1.4;
+      boostMushroom(car, mushroomColor);
+      return;
+    }
+    if (type === 'bullet' || type === 'star') {
+      car.power = type;
+      car.powerTime = type === 'bullet' ? 5 : 7;
+      car.bulletProgress = null;
+      car.driftDirection = 0;
+      car.charge = 0;
       return;
     }
     if (type === 'blast') {
@@ -181,7 +240,7 @@ export function createTrackItems(track, random = Math.random) {
     if (type === 'bomb') item.expires = now + 2.7;
     if (type === 'boomerang') {
       item.hits = new Set();
-      item.expires = now + 2.5;
+      item.expires = now + 3.4;
       car.boomerangOut = true;
     }
     objects.push(item);
@@ -204,7 +263,7 @@ export function createTrackItems(track, random = Math.random) {
     }
     if (type === 'boomerang') {
       const owner = positions.find(car => car.number === item.owner);
-      const returning = age > 0.48;
+      const returning = age > 0.82;
       if (now >= item.expires || (returning && Math.hypot(owner.x - x, owner.z - z) < 2.2)) {
         owner.boomerangOut = false;
         return false;
@@ -265,8 +324,27 @@ export function createTrackItems(track, random = Math.random) {
 
   function update(now, positions, dt) {
     effects = effects.filter(effect => effect.expires > now);
-    objects = objects.filter(item => updateObject(item, now, positions, dt));
+    objects = objects.filter(item => {
+      const { x, z } = item;
+      const active = updateObject(item, now, positions, dt);
+      item.vx = (item.x - x) / dt;
+      item.vz = (item.z - z) / dt;
+      return active;
+    });
     for (const [index, car] of positions.entries()) {
+      if (car.goldUntil && now >= car.goldUntil) {
+        car.goldUntil = 0;
+        car.item = null;
+        car.itemUses = 0;
+      }
+      if (car.powerTime > 0 && car.finishedAt === null) {
+        const height = car.flight?.y ?? track.profile(car.z, car.x).y;
+        for (const rival of positions) {
+          if (rival === car || Math.hypot(rival.x - car.x, rival.z - car.z) > 1.75) continue;
+          const rivalHeight = rival.flight?.y ?? track.profile(rival.z, rival.x).y;
+          if (Math.abs(height - rivalHeight) < 1.75) spinOut(rival, car.power);
+        }
+      }
       if (car.finishedAt !== null || car.flight?.y > 2.5) continue;
       if (car.roulette && now >= car.roulette.end) {
         car.item = car.roulette.item;
@@ -274,7 +352,7 @@ export function createTrackItems(track, random = Math.random) {
         car.nextItemUse = now + (car.bot ? 0.85 : 0.05);
         car.roulette = null;
       }
-      if (car.item || car.roulette || car.boomerangOut || car.spinTime > 0) continue;
+      if (car.item || car.roulette || car.boomerangOut || car.spinTime > 0 || car.powerTime > 0) continue;
       for (const row of rows) {
         if (Math.hypot(row.x - car.x, row.z - car.z) > halfRoad + 2) continue;
         const box = row.boxes.find(box => box.availableAt <= now && Math.hypot(box.x - car.x, box.z - car.z) < 2.15);

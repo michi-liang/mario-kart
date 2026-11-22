@@ -39,7 +39,8 @@ export function useBotItem(car, positions, now) {
   const rivalAhead = positions.slice(0, positions.indexOf(car)).some(other => other.finishedAt === null);
   const useful = car.item === 'blast' ? nearby.some(other => Math.hypot(other.x - car.x, other.z - car.z) < 7)
     : car.item === 'blue' || car.item === 'red' ? rivalAhead
-    : car.item === 'mushroom' ? car.speed > 12 && !car.wallContact
+    : car.item === 'mushroom' || car.item === 'gold' ? car.speed > 12 && !car.wallContact
+    : car.item === 'bullet' || car.item === 'star' ? !car.wallContact
     : car.item === 'banana' || linedUp;
   if (!useful && now < car.nextItemUse + 6.5 + (car.number % 4) * 0.45) return false;
   car.botNextUse = now + 0.62 + (car.number % 3) * 0.13;

@@ -23,12 +23,14 @@
     <section id="phone-race" class="phone-race" hidden>
       <div class="left-pedals">
         <button id="fire-shell" class="pedal shell" type="button">Use</button>
-        <button id="brake" class="pedal brake" type="button">Brake / Drift / Reverse</button>
+        <button id="brake" class="pedal brake" type="button">Brakes</button>
       </div>
       <div class="steering" aria-label="Tilt steering">
+        <strong id="race-player" class="race-player"></strong>
         <div class="steer-meter" aria-hidden="true"><div id="needle"></div></div>
         <div id="race-tilt"><button id="tilt" class="primary" type="button">Enable tilt</button>
           <p id="tilt-help" aria-live="polite"></p></div>
+        <button id="reset-kart" class="pedal small-pedal" type="button" hidden>Reset kart</button>
       </div>
       <button id="gas" class="pedal gas" type="button">Accelerate</button>
     </section>

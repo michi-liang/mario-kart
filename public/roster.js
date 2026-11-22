@@ -1,4 +1,4 @@
-export const playerColors = ['#67d9ff', '#ff8877', '#a9ed79', '#dcacff'];
+export const playerColors = ['#4cc9ff', '#ff747e', '#ffdb53', '#bd9aff'];
 
 // Sixteen drivers with distinct silhouettes, paint and rear wings.
 export const roster = [
