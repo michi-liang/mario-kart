@@ -3,6 +3,8 @@ import { centerline, coursePoint, nearestRoad, startIndex, step, wallOffset } fr
 export const finish = startIndex + 10;
 export const countdownSeconds = 3;
 export const wallClearance = wallOffset - 0.9;
+const kartDiameter = 2.8;
+const kartRestitution = 0.22;
 const count = centerline.length;
 const gates = Array.from({ length: 8 }, (_, i) => {
   const index = finish + Math.round(count * i / 8);
@@ -13,7 +15,13 @@ const gates = Array.from({ length: 8 }, (_, i) => {
 const courseOrder = Array.from({ length: count + 1 }, (_, i) => centerline[(finish + i) % count]);
 
 export function resetProgress(car) {
-  Object.assign(car, { lap: 0, checkpoint: 0, started: false, progress: 0, finishedAt: null });
+  Object.assign(car, { lap: 0, checkpoint: 0, started: false, progress: 0, finishedAt: null, wrongWayTime: 0 });
+}
+
+export function updateWrongWay(car, road, dt) {
+  const forward = Math.sin(car.yaw) * road.forwardX + Math.cos(car.yaw) * road.forwardZ;
+  const againstTraffic = Math.abs(car.speed) > 1.5 && forward * Math.sign(car.speed) < -0.5;
+  car.wrongWayTime = againstTraffic && car.finishedAt === null ? car.wrongWayTime + dt : 0;
 }
 
 export function advanceProgress(car, previousX, previousZ, elapsed, dt) {
@@ -73,16 +81,74 @@ export function catchUpFactor(car, leaderProgress, racerCount) {
   return 1 + 0.015 * Math.min(1, metersBehind / 160);
 }
 
-export function hitWall(car, previousX, previousZ) {
+function confineToTrack(car) {
   const nearest = nearestRoad(car.x, car.z);
-  if (nearest.distance <= wallClearance) return false;
-  const normalX = (car.x - nearest.x) / nearest.distance;
-  const normalZ = (car.z - nearest.z) / nearest.distance;
+  if (nearest.distance <= wallClearance) return null;
+  const x = (car.x - nearest.x) / nearest.distance;
+  const z = (car.z - nearest.z) / nearest.distance;
+  car.x = nearest.x + x * (wallClearance - 0.02);
+  car.z = nearest.z + z * (wallClearance - 0.02);
+  return { x, z };
+}
+
+function applyVelocity(car, x, z) {
+  const magnitude = Math.hypot(x, z);
+  if (magnitude < 0.001) {
+    car.speed = 0;
+    return;
+  }
+  const direction = car.speed < 0 ? -1 : 1;
+  const turn = Math.atan2(x * direction, z * direction) - car.yaw;
+  car.yaw += Math.atan2(Math.sin(turn), Math.cos(turn));
+  car.speed = magnitude * direction;
+}
+
+export function resolveKartCollisions(cars) {
+  const active = cars.filter(car => car.finishedAt === null);
+  if (active.length < 2) return;
+  // Extra passes resolve contacts between several karts or alongside a wall.
+  for (let pass = 0; pass < 3; pass++) {
+    let contact = false;
+    for (const [i, a] of active.entries()) {
+      for (let j = i + 1; j < active.length; j++) {
+        const b = active[j];
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const gap = Math.hypot(dx, dz);
+        if (gap >= kartDiameter) continue;
+        contact = true;
+        const nx = gap ? dx / gap : 1;
+        const nz = gap ? dz / gap : 0;
+        const push = (kartDiameter - gap + 0.01) / 2;
+        a.x -= nx * push;
+        a.z -= nz * push;
+        b.x += nx * push;
+        b.z += nz * push;
+        confineToTrack(a);
+        confineToTrack(b);
+
+        const ax = Math.sin(a.yaw) * a.speed;
+        const az = Math.cos(a.yaw) * a.speed;
+        const bx = Math.sin(b.yaw) * b.speed;
+        const bz = Math.cos(b.yaw) * b.speed;
+        const approach = (ax - bx) * nx + (az - bz) * nz;
+        if (approach <= 0) continue;
+        const impulse = approach * (1 + kartRestitution) / 2;
+        applyVelocity(a, ax - nx * impulse, az - nz * impulse);
+        applyVelocity(b, bx + nx * impulse, bz + nz * impulse);
+      }
+    }
+    if (!contact) break;
+  }
+}
+
+export function hitWall(car, previousX, previousZ) {
   const dx = car.x - previousX;
   const dz = car.z - previousZ;
+  const normal = confineToTrack(car);
+  if (!normal) return false;
+  const { x: normalX, z: normalZ } = normal;
   const outward = dx * normalX + dz * normalZ;
-  car.x = nearest.x + normalX * (wallClearance - 0.02);
-  car.z = nearest.z + normalZ * (wallClearance - 0.02);
   if (outward <= 0) return false;
 
   // Keep the motion along the barrier and bounce the outward component back.

@@ -1,4 +1,4 @@
-export const halfRoad = 10.35;
+export const halfRoad = 8.28;
 export const wallOffset = halfRoad + 7.5;
 
 // Closed spline through an original coast road, with a long launch straight,
@@ -59,6 +59,8 @@ export function nearestRoad(x, z) {
   let nearest = Infinity;
   let roadX = 0;
   let roadZ = 0;
+  let forwardX = 0;
+  let forwardZ = 0;
   for (let i = 0; i < centerline.length; i++) {
     const [ax, , az] = centerline[i];
     const [bx, , bz] = centerline[(i + 1) % centerline.length];
@@ -72,9 +74,13 @@ export function nearestRoad(x, z) {
       nearest = distance;
       roadX = px;
       roadZ = pz;
+      forwardX = dx;
+      forwardZ = dz;
     }
   }
-  return { x: roadX, z: roadZ, distance: Math.sqrt(nearest) };
+  const segmentLength = Math.hypot(forwardX, forwardZ);
+  return { x: roadX, z: roadZ, distance: Math.sqrt(nearest),
+    forwardX: forwardX / segmentLength, forwardZ: forwardZ / segmentLength };
 }
 
 export function roadDistance(x, z) {
