@@ -209,6 +209,23 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
 .character[aria-disabled="true"] { cursor: default; }
 .character svg { display: block; width: min(100%, 72px); margin: auto; }
 .character.selected { z-index: 1; }
+.character { border-top: 3px solid var(--driver, #40515a); }
+.character strong { display: block; margin-top: 2px; font-size: clamp(11px, 1.35vw, 15px); line-height: 1.15; }
+.character .company { display: block; color: var(--muted); font-size: clamp(9px, 1vw, 11px); font-style: normal; margin-bottom: 4px; }
+.picker-title { margin: 16px 0 0; color: var(--muted); font: 700 11px ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+.picker-title + .roster { margin-top: 8px; }
+.track-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+.track-card {
+  display: grid; grid-template-columns: 86px 1fr; align-items: center; gap: 12px;
+  padding: 10px 12px; text-align: left; background: #23323e; border: 1px solid #40515a;
+}
+.track-card svg { width: 86px; height: 72px; background: #172530; }
+.track-card path { fill: none; stroke: #67d9ff; stroke-width: 3; stroke-linejoin: round; }
+.track-card strong { display: block; font-size: 15px; }
+.track-card em { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; font-style: normal; }
+.track-card small { display: block; margin-top: 6px; color: #8fb3c4; font: 600 11px ui-monospace, monospace; }
+.track-card:hover { filter: brightness(1.2); }
+.track-card.selected { border-color: #bfe96b; box-shadow: inset 0 0 0 1px #bfe96b; }
 .pick-markers { position: absolute; top: 3px; left: 3px; right: 3px; display: flex; gap: 2px; flex-wrap: wrap; }
 .seats { display: flex; flex-wrap: wrap; gap: 5px; }
 .seat-badge {
@@ -221,13 +238,24 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
   white-space: nowrap;
 }
 .views { display: grid; gap: 2px; background: #111a22; }
+.race-stage { position: relative; overflow: hidden; }
+.intro-title {
+  position: absolute;
+  left: 6%;
+  bottom: 11%;
+  color: #fff;
+  font-size: clamp(24px, 5vw, 72px);
+  font-weight: 850;
+  letter-spacing: -.04em;
+  text-shadow: 0 2px 14px #10191d;
+}
 .views:is([data-count="2"], [data-count="3"], [data-count="4"]) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .views .viewport { min-width: 0; overflow: hidden; }
-.views .speed { top: auto; bottom: 9px; left: 9px; min-width: 0; padding: 4px 8px; }
+.views .speed { top: auto; bottom: 9px; left: auto; right: 8px; min-width: 0; padding: 4px 8px; }
 .views .speed strong { font-size: clamp(16px, 2.2vw, 32px); }
-.views .surface { top: auto; right: 8px; bottom: 8px; padding: 6px; }
+.views .surface { top: 36px; right: 8px; padding: 6px; }
 .view-label, .race-label {
   position: absolute;
   top: 8px;
@@ -236,8 +264,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
   border-radius: 6px;
   font-size: clamp(10px, 1.3vw, 14px);
 }
-.view-label { left: 8px; background: var(--seat); color: #13202a; }
-.spectator-label { background: #10191de8; color: #e4eeef; font-weight: 730; }
+.view-label { right: 8px; background: var(--seat); color: #13202a; }
 .wrong-way {
   position: absolute;
   top: 8px;
@@ -253,43 +280,48 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
   white-space: nowrap;
   pointer-events: none;
 }
-.race-label { right: 8px; }
-.race-label:empty { display: none; }
-.shell-badge {
+.race-label { top: auto; bottom: 8px; left: 8px; display: grid; gap: 2px; }
+.race-label strong { font-size: clamp(18px, 3vw, 37px); line-height: 1; color: var(--seat); }
+.inventory {
   position: absolute;
-  bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 5px 8px;
-  border: 1px solid #6cda7f;
-  border-radius: 6px;
-  background: #11281e;
-  color: #a7edac;
-  font-size: clamp(10px, 1.2vw, 14px);
-  font-weight: 750;
-  white-space: nowrap;
+  top: 8px;
+  left: 8px;
+  display: grid;
+  place-items: center;
+  width: clamp(48px, 8vw, 108px);
+  aspect-ratio: 1;
+  border: 2px solid var(--item-color, #ffffff66);
+  border-radius: 16%;
+  background: #10191df0;
+  color: var(--item-color, #fff);
+  font-size: clamp(31px, 5.5vw, 76px);
+  line-height: 1;
+  box-shadow: 0 3px 10px #10191d88;
 }
+.inventory svg { width: 78%; height: 78%; }
+.views[data-count="4"] .inventory { width: clamp(42px, 5.5vw, 84px); font-size: clamp(26px, 4vw, 59px); }
 .course-map { display: block; width: 100%; background: #101b23; border: 1px solid #2b3941; border-radius: 12px; }
 .course-map path { fill: none; stroke: #71909f; stroke-width: 4; stroke-linejoin: round; }
 .course-map #map-walls { stroke: #4f747f; stroke-width: 0.8; }
 .race-countdown {
   position: absolute;
-  top: 42%;
+  z-index: 2;
+  top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   color: #e9ffb3;
-  font-size: clamp(42px, 9vw, 105px);
+  font-size: clamp(88px, 17vw, 248px);
   font-weight: 950;
   letter-spacing: -.06em;
   line-height: 1;
-  text-shadow: 0 3px 0 #2a402b, 0 0 18px #10191d;
+  text-shadow: 0 5px 0 #2a402b, 0 0 12px #10191d, 0 0 32px #10191d;
   pointer-events: none;
 }
 .race-countdown:empty { display: none; }
-.views:not([data-count="1"]) .race-countdown { font-size: clamp(32px, 6vw, 72px); }
 .course-map circle { stroke: #152027; stroke-width: .8; }
 .course-map text { fill: #13202a; font: 800 6.6px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; }
 .standings { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; counter-reset: place; }
+.standings.places { max-height: 40vh; overflow-y: auto; scrollbar-width: thin; }
 .standings li {
   display: flex;
   align-items: center;
@@ -310,6 +342,8 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
   font-weight: 800;
 }
 @media (max-width: 750px) {
+  .roster { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .track-picker { grid-template-columns: 1fr; }
   .garage { padding-top: 18px; }
   .layout, .layout.race-layout { grid-template-columns: 1fr; }
   .map { width: 72px; bottom: 8px; right: 8px; }
@@ -335,7 +369,9 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--lime); outline-
   gap: 10px;
 }
 :fullscreen .race-layout .drive { display: flex; flex-direction: column; min-height: 0; }
-:fullscreen .views { flex: 1; min-height: 0; grid-auto-rows: minmax(0, 1fr); }
+:fullscreen .race-stage { flex: 1; min-height: 0; }
+:fullscreen .views, :fullscreen .race-intro { height: 100%; }
+:fullscreen .views { grid-auto-rows: minmax(0, 1fr); }
 :fullscreen .views .viewport { aspect-ratio: auto; min-height: 0; }
 :fullscreen .race-info { align-content: start; min-height: 0; overflow: auto; }
 :fullscreen .course-map { max-height: 43vh; }

@@ -1,6 +1,6 @@
 # Pocket Circuit
 
-A local kart racer for up to four players on Sunbreak Coast. Each phone joins through the same QR code and receives its player number in join order. Two players race side by side. Three or four players use a 2×2 grid, with a live spectator camera in the bottom-right panel for a three-player race. All players share a course map with the trackside barriers marked.
+A local kart racer for up to four human players across Sunbreak Coast, Apex Stadium, and Summit Circuit. Each phone joins through the same QR code and receives its player number in join order. Play mode fills the starting grid to 12 with CPU drivers and displays four camera views. Test mode is a solo race. All players share a course map with the trackside barriers marked.
 
 ## Try tilt steering
 
@@ -10,18 +10,26 @@ From this project folder, run the following with Node.js 20+ and `cloudflared` i
 npm.cmd start -- --tunnel
 ```
 
-1. Open [the laptop display](http://127.0.0.1:8080). Wait for **HTTPS link ready**.
+1. Open the **Laptop display** URL printed in the terminal. The default is [http://127.0.0.1:8080](http://127.0.0.1:8080). If a default port is occupied, the game uses an available port. Wait for **HTTPS link ready**.
 2. Scan the QR code with your phone’s camera. Open the link in Safari or Chrome.
-3. Choose **Test mode** for a solo three-lap race or **Play mode** to include the other players. Both use the same race rules. Tap the arrows on your phone to move across the 16-driver grid, then tap **Confirm**. With no phones connected, you can pick a driver and use the keyboard.
+3. Choose **Test mode** for a solo three-lap race or **Play mode** for a 12-driver race. Pick a track on the host screen, then tap the arrows on your phone to move across the 16-driver grid and tap **Confirm**. All drivers, including CPU opponents, use the same kart physics and top speed. With no phones connected, you can pick a driver and use the keyboard.
 4. On iPhone, turn on Portrait Orientation Lock and hold your phone with its top pointing left. The controls are already rotated 90° in a portrait browser. In the lobby, hold the phone up like a steering wheel, tap **Enable tilt**, and allow motion access if prompted. The button becomes **Recenter** after calibration. Start from the laptop when everyone is ready.
 
 Hold the right side to accelerate and tilt the phone left or right to steer. The steering curve has a 1.3° dead zone and reaches its maximum at 41° of tilt.
 
-Hold the lower-left pedal alone to brake and keep holding it after stopping to reverse. To drift, hold the accelerator and brake together and tilt into the corner. The kart points sideways as soon as the drift starts. Bring the phone back to center for a shallow slide, then tilt to tighten or countersteer. When sparks appear, release the brake while holding the accelerator for a boost. Drive through a red mushroom for a gentler boost with a lower top speed than a drift turbo. The laptop accepts WASD or arrow keys and **Shift** for drift. Use **S**, **Down**, or hold **Shift** from a stop to reverse.
+Hold the lower-left pedal alone to brake and keep holding it after stopping to reverse. To drift, hold the accelerator and brake together and tilt into the corner. The kart points sideways as soon as the drift starts. Bring the phone back to center for a shallow slide, then tilt to tighten or countersteer. When sparks appear, release the brake while holding the accelerator for a boost. The base top speed is 97 km/h on straights and 86 km/h while drifting. The laptop accepts WASD or arrow keys and **Shift** for drift. Use **S**, **Down**, or hold **Shift** from a stop to reverse.
+
+Apex Stadium is a floodlit circuit of about 942 meters per lap with a long grandstand straight, a sharper chicane, and a tight infield hairpin.
+
+Summit Circuit is about 2,213 meters per lap. The cyan edges mark a vertical hover wall with a left-hand hairpin. Steer left across the wall to line up with the descent. The wheels fold into hover position, and both karts spin and boost if they touch. The second half builds to a striped ramp and a glide across the final gap. During the glide, point the phone screen upward to lift the nose and stay airborne longer, or downward to dive and gain speed.
 
 Sunbreak Coast is about 778 meters per lap with a 16.56-meter road and a chicane after the opening straight. The barriers follow the course with about 7.5 meters of grass runoff on either side. Wall hits slow the kart without changing its heading. Checkpoints and the finish line also count when crossed in the grass, in the correct direction and order. A **Wrong Way** warning appears when you drive against the race direction. In multiplayer, karts can bump into each other, and trailing karts gradually gain up to 3% more on-road acceleration and top speed as the gap to the leader grows.
 
-Red markers show mushrooms, yellow triangles show bananas, and green diamonds show shells. At the start, look for a glowing green ring and a floating shell in the middle of the road just past the start/finish line. Pick up a green shell and tap **Use** in the upper left of your phone or press **E** on the laptop to send it straight ahead. It bounces off walls and spins out the first rival it hits. Use **Fullscreen** on the laptop to expand the race while keeping the leaderboard and course map on the side.
+The race opens with a course flyover followed by a camera move behind each kart and one shared countdown. The lobby music starts after the first click or key press. Music and sound effects play from the laptop. Use **Sound on** to mute them.
+
+Drive through a floating item box in one of the four fixed rows. The large icon in the top-left shows your item, and your place appears in the bottom-left. Press **Use** on the phone or **E** on the laptop to use the item. Hold brake or **Shift** while using a banana to drop it behind you. The red mushroom boosts speed, the green shell bounces, the red shell homes toward the next racer ahead, and the blue shell chases the leader. Fireballs bounce, boomerangs return, walking bombs move before exploding, and the boom box blasts nearby karts and clears projectiles. Use **Fullscreen** to keep the leaderboard and map beside the race.
+
+Item odds adapt the [Mario Kart 8 VS distance weights](https://www.mariowiki.com/Mario_Kart_8_item_probability_distributions) into four buckets based on relative position for this nine-item pool. The odds lock when you collect the box. The [roulette timing reference](https://mariokart.tech/wiki/items/) gives 190 frames and allows skipping after one second. Solo races combine the four buckets so every item can be tried.
 
 The steering design uses proportional phone input and separates the kart's visual heading from the direction it travels. [Smartphone racing-controller evaluation](https://www.diva-portal.org/smash/get/diva2%3A831318/FULLTEXT01.pdf) · [Stanford drifting paper](https://ddl.stanford.edu/publications/conference-proceeding/controller-automated-drifting-along-complex-trajectories)
 
@@ -38,7 +46,7 @@ The temporary Cloudflare tunnel carries controller traffic in tunnel mode. The l
 
 Scan the QR code after trusting the certificate. Use the root certificate generated on your own laptop and remove the profile or CA from your phone when you’re done testing. If you already have HTTPS files your phone trusts, set `TLS_KEY` and `TLS_CERT` to their paths and run `npm.cmd start`.
 
-If the Wi-Fi link uses the wrong network adapter, set `$env:LAN_HOST` to your laptop’s Wi-Fi IPv4 address before starting. The phone listener uses port 8081. Windows Firewall and networks with client isolation can prevent the phone from reaching the laptop.
+If the Wi-Fi link uses the wrong network adapter, set `$env:LAN_HOST` to your laptop's Wi-Fi IPv4 address before starting. The phone listener defaults to port 8081 and the QR code follows any port change. Windows Firewall and networks with client isolation can prevent the phone from reaching the laptop.
 
 ## Chase camera
 

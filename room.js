@@ -1,6 +1,9 @@
-const idle = { steer: 0, throttle: 0, brake: false };
+import { trackList } from './public/track.js';
+
+const idle = { steer: 0, throttle: 0, brake: false, pitch: 0 };
 const clamp = value => Math.max(-1, Math.min(1, value));
 const moves = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
+export const trackIds = trackList.map(track => track.id);
 
 export function createRoom() {
   const seats = new Map();
@@ -8,6 +11,7 @@ export function createRoom() {
   let mode = 'test';
   let round = 0;
   let soloPick = 0;
+  let track = trackIds[0];
   let racingSeats = [];
   const connected = (seat, now) => now - seat.lastSeen < 1000;
   function contestants(now) {
@@ -15,7 +19,7 @@ export function createRoom() {
     return mode === 'test' ? active.slice(0, 1) : active;
   }
 
-  function host({ action, character }, now = Date.now()) {
+  function host({ action, character, track: chosenTrack }, now = Date.now()) {
     if (action === 'menu' || action === 'test' || action === 'play') {
       phase = action === 'menu' ? 'menu' : 'selection';
       if (action !== 'menu') mode = action;
@@ -25,6 +29,11 @@ export function createRoom() {
       return true;
     }
     if (phase !== 'selection') return false;
+    if (action === 'track') {
+      if (!trackIds.includes(chosenTrack)) return false;
+      track = chosenTrack;
+      return true;
+    }
     const active = contestants(now);
     if (action === 'pick' && active.length === 0 && Number.isInteger(character) && character >= 0 && character < 16) {
       soloPick = character;
@@ -32,6 +41,16 @@ export function createRoom() {
     }
     if (action !== 'start' || active.some(seat => !seat.ready)) return false;
     racingSeats = active.length ? active : [{ number: 1, character: soloPick, keyboard: true }];
+    if (mode === 'play') {
+      const used = new Set(racingSeats.map(seat => seat.character));
+      for (let number = 1; number <= 12; number++) {
+        if (racingSeats.some(seat => seat.number === number)) continue;
+        const character = Array.from({ length: 16 }, (_, i) => (i * 5 + number * 3) % 16)
+          .find(index => !used.has(index));
+        used.add(character);
+        racingSeats.push({ number, character, bot: true });
+      }
+    }
     for (const seat of racingSeats) seat.shellShot = 0;
     phase = 'racing';
     round++;
@@ -39,8 +58,8 @@ export function createRoom() {
   }
 
   function input(id, data, now = Date.now()) {
-    const { steer, throttle, brake = false, command, sequence } = data || {};
-    if (!/^[a-f0-9]{24}$/.test(id ?? '') || ![steer, throttle].every(Number.isFinite) ||
+    const { steer, throttle, brake = false, pitch = 0, command, sequence } = data || {};
+    if (!/^[a-f0-9]{24}$/.test(id ?? '') || ![steer, throttle, pitch].every(Number.isFinite) ||
       typeof brake !== 'boolean' || (command !== undefined &&
         (typeof command !== 'string' || (!Object.hasOwn(moves, command) && command !== 'confirm' && command !== 'fire') ||
           !Number.isSafeInteger(sequence) || sequence < 1))) {
@@ -57,7 +76,7 @@ export function createRoom() {
       seat.ready = false;
     }
     seat.lastSeen = now;
-    seat.controls = { steer: clamp(steer), throttle: clamp(throttle), brake };
+    seat.controls = { steer: clamp(steer), throttle: clamp(throttle), brake, pitch: clamp(pitch) };
     const selecting = phase === 'selection' && contestants(now).includes(seat);
     if (command && sequence > seat.sequence) {
       seat.sequence = sequence;
@@ -88,10 +107,10 @@ export function createRoom() {
       const live = connected(seat, now);
       const controlsFresh = now - seat.lastSeen < 600;
       return { number: seat.number, character: seat.character, ready: !!seat.ready, connected: live,
-        keyboard: !!seat.keyboard, shellShot: seat.shellShot ?? 0,
+        keyboard: !!seat.keyboard, bot: !!seat.bot, shellShot: seat.shellShot ?? 0,
         ...(phase === 'racing' && controlsFresh ? seat.controls : idle) };
     });
-    return { phase, mode, round, players, soloPick };
+    return { phase, mode, round, players, soloPick, track };
   }
   return { input, host, snapshot };
 }

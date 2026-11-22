@@ -6,7 +6,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo Open http://127.0.0.1:8080 on this computer after the server starts.
+echo Open the Laptop display URL printed after the server starts.
 echo T - Phone tilt using an HTTPS tunnel ^(requires cloudflared^)
 echo L - Phone tilt on the same network ^(see README for certificate setup^)
 echo K - Keyboard or same-network phone pedals

@@ -11,7 +11,7 @@ import { createRoom } from './room.js';
 const tunnelMode = process.argv.includes('--tunnel');
 const localHttps = process.argv.includes('--lan-https');
 const displayPort = Number(process.env.DISPLAY_PORT || 8080);
-const phonePort = Number(process.env.PHONE_PORT || 8081);
+const requestedPhonePort = Number(process.env.PHONE_PORT || 8081);
 const key = process.env.TLS_KEY;
 const cert = process.env.TLS_CERT;
 if (Boolean(key) !== Boolean(cert) || (key && (tunnelMode || localHttps)) || (tunnelMode && localHttps)) {
@@ -27,7 +27,7 @@ const lanHost = process.env.LAN_HOST || lanAddresses[0]?.address || '127.0.0.1';
 const tls = localHttps ? makeLanCertificate(lanHost) :
   key && { key: readFileSync(key), cert: readFileSync(cert) };
 const token = randomBytes(12).toString('base64url');
-let origin = `${tls ? 'https' : 'http'}://${lanHost}:${phonePort}`;
+let origin;
 let tunnelStatus = tunnelMode ? 'starting' : 'off';
 const clients = new Set();
 const room = createRoom();
@@ -37,6 +37,11 @@ const assets = new Map([
   ['/style.css', ['text/css', 'style.css']],
   ['/drive.js', ['text/javascript', 'drive.js']],
   ['/track.js', ['text/javascript', 'track.js']],
+  ['/scenery.js', ['text/javascript', 'scenery.js']],
+  ['/bots.js', ['text/javascript', 'bots.js']],
+  ['/audio.js', ['text/javascript', 'audio.js']],
+  ['/summit-music.m4a', ['audio/mp4', 'summit-music.m4a']],
+  ['/depth.js', ['text/javascript', 'depth.js']],
   ['/roster.js', ['text/javascript', 'roster.js']],
   ['/race.js', ['text/javascript', 'race.js']],
   ['/track-items.js', ['text/javascript', 'track-items.js']],
@@ -94,13 +99,9 @@ const display = createServer((req, res) => {
     res.on('close', () => clients.delete(res));
     return;
   }
-  if (['/', '/drive.js', '/track.js', '/roster.js', '/race.js', '/track-items.js', '/style.css'].includes(pathname)) return asset(res, pathname);
+  if (assets.has(pathname) && pathname !== '/p') return asset(res, pathname);
   send(res, 404, 'text/plain', 'Not found');
 });
-display.listen(displayPort, '127.0.0.1', () => {
-  console.log(`Laptop display: http://127.0.0.1:${displayPort}`);
-});
-
 function controller(req, res) {
   const url = new URL('http://localhost' + (req.url.startsWith('/') ? req.url : '/'));
   if (req.method === 'GET' && ['/style.css', '/controller.js', '/roster.js'].includes(url.pathname)) {
@@ -142,17 +143,55 @@ function readJson(req, res, callback) {
   });
 }
 const phone = tls ? createSecureServer(tls, controller) : createServer(controller);
-phone.listen(phonePort, '0.0.0.0', () => {
+
+function listen(server, port, host) {
+  return new Promise((resolve, reject) => {
+    const onError = error => {
+      server.off('listening', onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off('error', onError);
+      resolve(server.address().port);
+    };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port, host);
+  });
+}
+
+async function bindPort(server, port, host, setting) {
+  try {
+    return await listen(server, port, host);
+  } catch (error) {
+    if (error.code !== 'EADDRINUSE') throw error;
+    if (process.env[setting]) {
+      throw new Error(`Port ${port} is in use. Set ${setting} to an available port and try again.`);
+    }
+    const availablePort = await listen(server, 0, host);
+    console.log(`Port ${port} is in use. Using port ${availablePort} instead.`);
+    return availablePort;
+  }
+}
+
+try {
+  const phonePort = await bindPort(phone, requestedPhonePort, '0.0.0.0', 'PHONE_PORT');
+  origin = `${tls ? 'https' : 'http'}://${lanHost}:${phonePort}`;
+  const laptopPort = await bindPort(display, displayPort, '127.0.0.1', 'DISPLAY_PORT');
+  console.log(`Laptop display: http://127.0.0.1:${laptopPort}`);
   console.log(`LAN controller: ${pairingUrl()}`);
-  if (tunnelMode) startTunnel();
-});
+  if (tunnelMode) startTunnel(phonePort);
+} catch (error) {
+  console.error(`Could not start Pocket Circuit: ${error.message}`);
+  process.exit(1);
+}
 
 setInterval(publish, 33).unref();
 setInterval(() => {
   for (const res of clients) res.write(': heartbeat\n\n');
 }, 15000).unref();
 
-function startTunnel() {
+function startTunnel(phonePort) {
   const tunnel = spawn('cloudflared', ['tunnel', '--url', `http://127.0.0.1:${phonePort}`], {
     windowsHide: true,
   });

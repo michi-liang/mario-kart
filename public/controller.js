@@ -28,8 +28,10 @@ const commands = [];
 let lastState = '';
 let tiltEnabled = false;
 let baseline = null;
+let pitchBaseline = 0;
 let motionSeen = -Infinity;
 let steering = 0;
+let glidePitch = 0;
 let sending = false;
 let sensorTimer;
 let lastError;
@@ -42,6 +44,7 @@ function calibrate() {
   baseline = null;
   motionSeen = -Infinity;
   steering = 0;
+  glidePitch = 0;
   help.textContent = 'Hold the phone like a steering wheel.';
   clearTimeout(sensorTimer);
   sensorTimer = setTimeout(() => { help.textContent = 'Raise the phone to a more upright angle.'; }, 3500);
@@ -54,8 +57,10 @@ function orient(event) {
   // removes it, so the steering sign stays the same with portrait lock enabled.
   const horizontal = Math.sin(gamma) * Math.cos(beta);
   const vertical = Math.sin(beta);
+  const pitch = Math.asin(Math.cos(beta) * Math.cos(gamma)) * 180 / Math.PI;
   if (Math.hypot(horizontal, vertical) < 0.23) {
     steering = 0;
+    glidePitch = 0;
     help.textContent = 'Raise the phone to a more upright angle.';
     return;
   }
@@ -63,12 +68,17 @@ function orient(event) {
   const now = performance.now();
   if (baseline === null) {
     baseline = roll;
+    pitchBaseline = pitch;
     tilt.textContent = 'Recenter';
     clearTimeout(sensorTimer);
   }
   if (help.textContent) help.textContent = '';
   const angle = ((roll - baseline + 540) % 360) - 180;
-  steering += (tiltResponse(angle) - steering) * (1 - Math.exp(-(now - motionSeen) / 30));
+  const blend = 1 - Math.exp(-(now - motionSeen) / 30);
+  steering += (tiltResponse(angle) - steering) * blend;
+  const pitchDelta = pitch - pitchBaseline;
+  const targetPitch = Math.sign(pitchDelta) * Math.min(1, Math.max(0, (Math.abs(pitchDelta) - 2) / 23));
+  glidePitch += (targetPitch - glidePitch) * blend;
   motionSeen = now;
 }
 
@@ -186,7 +196,8 @@ function showRoom(state) {
 
 async function tick() {
   if (document.hidden) return;
-  const steer = performance.now() - motionSeen < 500 ? steering : 0;
+  const fresh = performance.now() - motionSeen < 500;
+  const steer = fresh ? steering : 0;
   needle.style.left = (50 + steer * 46) + '%';
   if (sending) return;
   sending = true;
@@ -197,7 +208,7 @@ async function tick() {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, ...command, steer, throttle,
+      body: JSON.stringify({ id, ...command, steer, throttle, pitch: fresh ? glidePitch : 0,
         brake: pressed.get(brake).size > 0 }),
       signal: AbortSignal.timeout(800),
     });

@@ -13,7 +13,8 @@
     <header class="masthead">
       <div class="mark" aria-hidden="true">▥</div>
       <h1>Pocket Circuit</h1>
-      <span class="track-name">SUNBREAK COAST</span>
+      <span id="track-name" class="track-name">SUNBREAK COAST</span>
+      <button id="sound" class="secondary" type="button" aria-pressed="true">Sound on</button>
       <button id="fullscreen" class="secondary" type="button" aria-pressed="false">Fullscreen</button>
       <button id="back" class="secondary" type="button" hidden>Menu</button>
     </header>
@@ -22,18 +23,28 @@
         <h2>Choose a mode</h2>
         <div class="mode-options">
           <button class="mode-option" id="test-mode" type="button"><strong>Test mode</strong><span>Solo three-lap race</span></button>
-          <button class="mode-option" id="play-mode" type="button"><strong>Play mode</strong><span>Three-lap race</span></button>
+          <button class="mode-option" id="play-mode" type="button"><strong>Play mode</strong><span>12 drivers · Three laps</span></button>
         </div>
       </section>
       <section id="selection" class="screen selection" hidden>
         <div class="selection-header"><h2>Choose a driver</h2><button id="start" class="primary" type="button">Start</button></div>
         <p id="lobby-help"></p>
+        <h3 class="picker-title">Track</h3>
+        <div id="track-picker" class="track-picker" role="radiogroup" aria-label="Choose a track"></div>
+        <h3 class="picker-title">Driver</h3>
         <div id="roster" class="roster"></div>
       </section>
       <section id="race" class="drive" aria-label="Driving simulator" hidden>
-        <div id="views" class="views"></div>
+        <div class="race-stage">
+          <div id="race-intro" class="viewport race-intro" hidden>
+            <canvas aria-label="Opening course flyover"></canvas>
+            <div id="intro-title" class="intro-title"></div>
+          </div>
+          <div id="views" class="views" hidden></div>
+          <div id="race-countdown" class="race-countdown" role="status"></div>
+        </div>
         <footer class="drive-footer">
-          <span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or arrows · <kbd>Shift</kbd> drift · <kbd>E</kbd> throw shell</span>
+          <span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or arrows · <kbd>Shift</kbd> drift · <kbd>E</kbd> use item</span>
         </footer>
       </section>
       <aside class="pairing" id="pairing">
