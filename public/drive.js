@@ -552,6 +552,14 @@ function carMesh(car) {
   }
   box(mesh, place, -0.83, 0.93, -1.44, 1.66, 0.09, 0.42, ['#2d7571', '#93b652', '#2d7571', '#93b652', '#bfe96b']);
   driverMesh(mesh, place, car, driver);
+  if (car.hasShell && car.finishedAt === null) {
+    const hover = 0.34 + 0.12 * Math.sin(car.effectTime * 5);
+    for (const face of shellMesh) {
+      mesh.push({ ...face, points: face.points.map(([x, y, z]) => place([
+        x * 0.8, y * 0.8 + hover, z * 0.8 - 2.65,
+      ])) });
+    }
+  }
   return mesh;
 }
 

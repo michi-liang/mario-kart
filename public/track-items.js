@@ -1,4 +1,4 @@
-import { centerline, coursePoint, halfRoad, roadDistance, wallOffset } from './track.js';
+import { centerline, coursePoint, halfRoad, nearestRoad, roadDistance, wallOffset } from './track.js';
 import { finish } from './race.js';
 
 export const mushroomColor = '#f46565';
@@ -6,6 +6,7 @@ export const mushroomTopSpeed = 27;
 export const bananaColor = '#f9e753';
 export const bananaSpinTime = 0.82;
 export const shellColor = '#83f879';
+const shellWallClearance = wallOffset - 0.65;
 const itemRules = [
   { type: 'mushroom', initial: 9, max: 17, interval: 1.25, jitter: 1, lifetime: 29 },
   { type: 'banana', initial: 2, max: 5, interval: 5, jitter: 3, lifetime: 24 },
@@ -37,6 +38,39 @@ function applyItem(item, car) {
   }
 }
 
+function firstShellTarget(shell, cars, travel) {
+  let target;
+  let firstHit = travel;
+  for (const car of cars) {
+    if (car.number === shell.owner || car.finishedAt !== null) continue;
+    const x = car.x - shell.x;
+    const z = car.z - shell.z;
+    const along = x * shell.dx + z * shell.dz;
+    const across = x * shell.dz - z * shell.dx;
+    const reach = 1.65 ** 2 - across ** 2;
+    if (reach < 0) continue;
+    const intersect = Math.sqrt(reach);
+    const entry = Math.max(0, along - intersect);
+    if (along + intersect < 0 || entry > firstHit) continue;
+    firstHit = entry;
+    target = car;
+  }
+  return target;
+}
+
+function shellWallDistance(shell, travel) {
+  if (roadDistance(shell.x + shell.dx * travel, shell.z + shell.dz * travel) < shellWallClearance) return null;
+  let inside = 0;
+  let outside = travel;
+  for (let i = 0; i < 10; i++) {
+    const middle = (inside + outside) / 2;
+    const distance = roadDistance(shell.x + shell.dx * middle, shell.z + shell.dz * middle);
+    if (distance < shellWallClearance) inside = middle;
+    else outside = middle;
+  }
+  return inside;
+}
+
 export function createTrackItems(random = Math.random) {
   let items = [];
   let shells = [];
@@ -61,40 +95,42 @@ export function createTrackItems(random = Math.random) {
     if (!car.hasShell || car.finishedAt !== null || car.spinTime > 0) return;
     const dx = Math.sin(car.yaw);
     const dz = Math.cos(car.yaw);
+    const x = car.x + dx * 1.55;
+    const z = car.z + dz * 1.55;
+    const roomAhead = roadDistance(x, z) < shellWallClearance;
     shells.push({ id: nextId++, type: 'shell', owner: car.number, moving: true,
-      x: car.x + dx * 1.55, z: car.z + dz * 1.55, dx, dz, expires: now + 3 });
+      x: roomAhead ? x : car.x, z: roomAhead ? z : car.z, dx, dz, expires: now + 3 });
     car.hasShell = false;
   }
 
   function updateShells(now, cars, dt) {
-    const travel = 42 * dt;
     shells = shells.filter(shell => {
-      if (shell.expires <= now || roadDistance(shell.x, shell.z) >= wallOffset - 0.4) return false;
-      const nextX = shell.x + shell.dx * travel;
-      const nextZ = shell.z + shell.dz * travel;
-      let target;
-      let firstHit = travel;
-      for (const car of cars) {
-        if (car.number === shell.owner || car.finishedAt !== null) continue;
-        const x = car.x - shell.x;
-        const z = car.z - shell.z;
-        const along = x * shell.dx + z * shell.dz;
-        const across = x * shell.dz - z * shell.dx;
-        const reach = 1.65 ** 2 - across ** 2;
-        if (reach < 0) continue;
-        const intersect = Math.sqrt(reach);
-        const entry = Math.max(0, along - intersect);
-        if (along + intersect < 0 || entry > firstHit) continue;
-        firstHit = entry;
-        target = car;
+      if (shell.expires <= now) return false;
+      let remaining = 42 * dt;
+      // Resolve each straight segment in order, including the distance left after a bounce.
+      for (let bounce = 0; bounce < 4 && remaining > 0.001; bounce++) {
+        const wall = shellWallDistance(shell, remaining);
+        const travel = wall ?? remaining;
+        const target = firstShellTarget(shell, cars, travel);
+        if (target) {
+          spinOut(target, 'SHELL HIT', shellColor);
+          return false;
+        }
+        shell.x += shell.dx * travel;
+        shell.z += shell.dz * travel;
+        if (wall === null) break;
+
+        const nearest = nearestRoad(shell.x, shell.z);
+        const nx = (shell.x - nearest.x) / nearest.distance;
+        const nz = (shell.z - nearest.z) / nearest.distance;
+        const outward = Math.max(0, shell.dx * nx + shell.dz * nz);
+        shell.dx -= 2 * outward * nx;
+        shell.dz -= 2 * outward * nz;
+        shell.x = nearest.x + nx * (shellWallClearance - 0.03);
+        shell.z = nearest.z + nz * (shellWallClearance - 0.03);
+        remaining -= travel;
       }
-      if (target && roadDistance(shell.x + shell.dx * firstHit, shell.z + shell.dz * firstHit) < wallOffset - 0.4) {
-        spinOut(target, 'SHELL HIT', shellColor);
-        return false;
-      }
-      shell.x = nextX;
-      shell.z = nextZ;
-      return roadDistance(nextX, nextZ) < wallOffset - 0.4;
+      return true;
     });
   }
 
