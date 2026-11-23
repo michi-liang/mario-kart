@@ -92,98 +92,153 @@ export function buildScene(track) {
   return { ...scene, terrain: chunks(scene.terrain, 8), road: chunks(scene.road, 20) };
 }
 
+
 function neonScene(track) {
-  const terrain = [];
-  for (let z = -380; z < 600; z += 48) {
-    for (let x = -520; x < 580; x += 48) {
-      const tone = (Math.floor(x / 48) + Math.floor(z / 48)) % 3;
-      terrain.push({ color: ['#071226', '#09172d', '#0c1930'][tone],
-        points: [[x, 0, z], [x + 48, 0, z], [x + 48, 0, z + 48], [x, 0, z + 48]] });
-    }
-  }
-
-  const road = [];
-  for (let i = 0; i < track.finish; i++) {
-    roadStrip(road, track, i, i + 1, -halfRoad - 1.2, halfRoad + 1.2, '#192551');
-    roadStrip(road, track, i, i + 1, -halfRoad, halfRoad, i % 7 < 3 ? '#151a35' : '#1c2040');
-    roadStrip(road, track, i, i + 1, -halfRoad, -halfRoad + 0.48, '#36e7ed');
-    roadStrip(road, track, i, i + 1, halfRoad - 0.48, halfRoad, '#f555c7');
-    if (i % 8 < 3) roadStrip(road, track, i, i + 1, -0.10, 0.10, '#5968bd');
-  }
-  finishTiles(road, track, '#10152e', '#d7faff');
-
-  // These ribbons make the two city junctions legible from the road and map:
-  // a quick outer shortcut, then a pair of intertwined lanes around the tower.
-  const ribbon = (points, width, base, edge) => {
-    for (let i = 0; i < points.length - 1; i++) {
-      const [ax, az] = points[i], [bx, bz] = points[i + 1];
-      const span = Math.hypot(bx - ax, bz - az) || 1;
-      const nx = (bz - az) / span * width, nz = -(bx - ax) / span * width;
-      road.push({ color: base, points: [[ax + nx, 0.12, az + nz], [ax - nx, 0.12, az - nz],
-        [bx - nx, 0.12, bz - nz], [bx + nx, 0.12, bz + nz]] });
-      road.push({ color: edge, points: [[ax + nx, 0.14, az + nz], [ax + nx * .79, 0.14, az + nz * .79],
-        [bx + nx * .79, 0.14, bz + nz * .79], [bx + nx, 0.14, bz + nz]] });
-    }
+  const road = [], terrain = [], props = [], gantry = [];
+  const placeOn = (index, route, across = 0, lift = 0) => {
+    const [x, , z] = track.coursePoint(index, across, 0, route);
+    return track.surfacePoint(x, z, lift, route, index);
   };
-  ribbon([[68, -22], [142, -8], [183, 39], [132, 92], [71, 74]], 6.1, '#20295a', '#39e8ef');
-  ribbon([[230, 130], [304, 117], [383, 169], [384, 246], [319, 276], [259, 228], [269, 166]], 5.7, '#302154', '#ff5bd7');
-  ribbon([[247, 140], [306, 162], [351, 214], [329, 274], [262, 278], [217, 225], [240, 176]], 5.1, '#1d315f', '#58e8ff');
-
-  const gantry = [];
-  const finish = finishFrame(track);
-  for (const side of [-1, 1]) box(gantry, finish, side * (halfRoad + 0.7) - 0.5, 0, -0.5, 1, 8, 1,
-    ['#253568', '#314b8f', '#57eaff']);
-  box(gantry, finish, -halfRoad - 0.2, 6.6, -0.55, halfRoad * 2 + 0.4, 1.4, 1.1,
-    ['#281a50', '#3d2670', '#ff64d7']);
-
-  const props = [];
-  const occupied = (x, z) => track.roadDistance(x, z) < wallOffset + 10;
-  for (let gx = -480; gx <= 540; gx += 56) {
-    for (let gz = -340; gz <= 560; gz += 56) {
-      if (occupied(gx, gz) || hash(gx * .037 + gz * .081) < .36) continue;
-      const height = 18 + hash(gx * 1.7 + gz * 2.1) * 72;
-      const width = 18 + hash(gx + gz) * 16;
-      const mesh = [];
-      const place = ([dx, y, dz]) => [gx + dx, y, gz + dz];
-      const neon = hash(gx * 5 + gz) > .5 ? '#4eeaff' : '#ff59cd';
-      box(mesh, place, -width / 2, 0, -width / 2, width, height, width, ['#111936', '#17234a', '#1d2b5a']);
-      box(mesh, place, -width / 2 - .08, height * .68, -width / 2 - .1, width + .16, 1.1, .18,
-        [neon, neon, neon]);
-      props.push({ x: gx, z: gz, mesh, range: 180, pad: width });
+  const padLocations = track.boostRows.map(row => Math.round(row * track.finish));
+  const jumpLocations = track.jumpRows.map(row => Math.round(row * track.finish));
+  for (const route of track.routes) {
+    const width = route.width;
+    for (let i = route.start; i < route.end; i++) {
+      const jump = jumpLocations.find(index => i >= index - 4 && i < index + 6);
+      if (jump !== undefined && i >= jump + 1 && i < jump + 5) continue;
+      const ramp = jump === undefined ? () => 0 : index => index <= jump + 1
+        ? Math.max(0, (index - jump + 4) * 0.19) : 0;
+      const point = (index, across, h) => {
+        const deck = route.deck?.[index - route.start];
+        if (!deck) return placeOn(index, route, across, h + ramp(index));
+        const { x, z, low, high } = deck;
+        const edge = across < 0 ? high : low;
+        const center = Math.max(low, Math.min(high, z));
+        return track.surfacePoint(x, center + (edge - center) * Math.abs(across) / width, h + ramp(index), route, index);
+      };
+      const strip = (left, right, color, lift = 0) => {
+        road.push({ color, points: [point(i, left, lift), point(i, right, lift),
+          point(i + 1, right, lift), point(i + 1, left, lift)] });
+      };
+      const pad = padLocations.some(index => Math.abs(i - index) < 3);
+      const rolling = route.roll && i >= route.roll[0] && i <= route.roll[1];
+      const deckColor = ramp(i) > 0 ? '#512953' : i % 10 < 5 ? '#222849' : '#252c4d';
+      if (rolling || route.section === 3) {
+        // Split a twisting cross-section so its triangles follow the centerline
+        // and each edge instead of cutting a single diagonal across the deck.
+        for (let band = -2; band < 2; band++) strip(band * width / 2, (band + 1) * width / 2, deckColor);
+      } else {
+        strip(-width, width, deckColor);
+      }
+      if (pad || (jump !== undefined && i <= jump)) {
+        for (const side of [-1, 1]) {
+          const left = side === 1 ? 0.2 : -width * 0.80;
+          const right = side === 1 ? width * 0.80 : -0.2;
+          road.push({ color: pad ? '#8dffff' : '#ff95e8', points: [point(i, left, 0.065),
+            point(i, right, 0.065), point(i + 1, right, 0.065), point(i + 2, left, 0.065)] });
+        }
+      } else if (i % 9 < 3) strip(-0.12, 0.12, '#626d9e', 0.035);
+      for (const side of [-1, 1]) {
+        const edge = side * width;
+        const rail = side === -1 ? 'highRail' : 'lowRail';
+        if (route.deck && !(route.deck[i - route.start][rail] && route.deck[i + 1 - route.start][rail])) continue;
+        strip(Math.min(edge, edge - side * 0.55), Math.max(edge, edge - side * 0.55), route.color, 0.04);
+        road.push({ color: i % 7 < 5 ? '#35456d' : route.color,
+          points: [point(i, edge, 0), point(i + 1, edge, 0), point(i + 1, edge, 0.72), point(i, edge, 0.72)] });
+      }
+      const forkDistance = i - route.start;
+      if (route.deck && forkDistance >= 13 && forkDistance <= 62 && forkDistance % 7 === 0 && !pad && jump === undefined) {
+        const deck = route.deck[forkDistance];
+        if (Math.min(deck.high - deck.z, deck.z - deck.low) > 0.65) {
+          const arrow = [[-3, 0], [0, 2], [3, 0], [3, 1], [0, 3], [-3, 1]];
+          road.push({ color: route.color, points: arrow.map(([x, advance]) => point(i + advance, x, 0.07)) });
+        }
+      }
+      if (i % 32 === 0 && route.section !== 3 && !rolling && jump === undefined) {
+        const [x, y, z] = point(i, 0, -0.4);
+        const mesh = [];
+        box(mesh, ([a, b, c]) => [x + a, b, z + c], -1.9, 0, -1.9, 3.8, y, 3.8,
+          ['#18213c', '#263359', '#101932', '#1a2445', '#29355b']);
+        props.push({ x, y: y * 0.65, z, mesh, range: 225, pad: 7 });
+      }
     }
   }
-  for (const fraction of track.boostRows) {
-    const index = Math.round(track.finish * fraction);
-    const [x, , z] = track.coursePoint(index);
-    const [rightX, , rightZ] = track.coursePoint(index, 1);
-    const place = ([dx, y, dz]) => [x + (rightX - x) * dx - (rightZ - z) * dz, y,
-      z + (rightZ - z) * dx + (rightX - x) * dz];
+  for (const pillar of track.spinPillars) {
+    const surface = track.profile(pillar.z, pillar.x, pillar.route, pillar.index);
+    const [x, y, z] = surface.point;
     const mesh = [];
-    slab(mesh, place, -halfRoad * .72, 0.035, -2.2, halfRoad * 1.44, 0.07, 4.4, '#247bc2', '#5cf4ff');
-    props.push({ x, z, mesh, range: 135, pad: 8 });
+    const rings = [[0.04, 1.23], [0.22, 1.08], [0.49, 0.88], [1.13, 0.88], [1.39, 1.02], [1.66, 0.71]];
+    const colors = ['#344a52', '#a4f991', '#3c5f5d', '#bdff9d', '#60c978'];
+    const vertex = (ring, side) => {
+      const [lift, width] = rings[ring];
+      const angle = side * tau / 10;
+      return surface.point.map((value, i) => value + surface.up[i] * lift + pillar.radius * width *
+        (Math.cos(angle) * surface.right[i] + Math.sin(angle) * surface.forward[i]));
+    };
+    for (let ring = 0; ring < rings.length - 1; ring++) {
+      for (let side = 0; side < 10; side++) {
+        mesh.push({ color: colors[ring], points: [vertex(ring, side), vertex(ring, side + 1),
+          vertex(ring + 1, side + 1), vertex(ring + 1, side)] });
+      }
+    }
+    mesh.push({ color: '#e0ffc7', points: Array.from({ length: 10 }, (_, side) => vertex(rings.length - 1, side)) });
+    props.push({ x, y, z, mesh, range: 140, pad: 3 });
   }
-  // Two low ramp gates signal the jumps without disrupting the flat physics.
-  for (const fraction of [.36, .72]) {
-    const index = Math.round(track.finish * fraction);
-    const [x, , z] = track.coursePoint(index);
-    const [rightX, , rightZ] = track.coursePoint(index, 1);
-    const place = ([dx, y, dz]) => [x + (rightX - x) * dx - (rightZ - z) * dz, y,
-      z + (rightZ - z) * dx + (rightX - x) * dz];
-    const mesh = [];
-    slab(mesh, place, -halfRoad * .62, 0.04, -3.5, halfRoad * 1.24, 0.34, 4.8, '#3e206b', '#ff67db');
-    props.push({ x, z, mesh, range: 135, pad: 8 });
+  for (const [index, color] of [[track.startIndex + 7, '#50f0fb'], [track.finish, '#ffd279']]) {
+    const point = (across, height, along = 0) => placeOn(index + along, undefined, across, height);
+    for (let i = -10; i < 10; i++) {
+      for (let row = 0; row < 2; row++) gantry.push({ color: (i + row) % 2 ? color : '#131833',
+        points: [point(i, 0.09, row), point(i + 1, 0.09, row),
+          point(i + 1, 0.09, row + 1), point(i, 0.09, row + 1)] });
+    }
+    for (const side of [-1, 1]) {
+      const x = side * 9.6;
+      gantry.push({ color, points: [point(x - 0.32, 0), point(x + 0.32, 0),
+        point(x + 0.32, 7.6), point(x - 0.32, 7.6)] });
+    }
+    gantry.push({ color, points: [point(-10, 6.7), point(10, 6.7), point(10, 8.1), point(-10, 8.1)] });
+  }
+
+  for (let z = -610; z <= 825; z += 70) {
+    for (let x = -870; x <= 890; x += 70) {
+      const seed = x * 0.028 + z * 0.039;
+      terrain.push({ color: hash(seed) > .5 ? '#081229' : '#0d1932',
+        points: [[x, 0, z], [x + 68, 0, z], [x + 68, 0, z + 68], [x, 0, z + 68]] });
+      for (const [dx, dz] of [[16, 17], [45, 43]]) {
+        const gx = x + dx, gz = z + dz;
+        const width = 19 + hash(seed + dx) * 15;
+        const nearRoad = track.roadDistance(gx, gz) < width * 0.76 + 30;
+        const tower = nearRoad ? 34 + hash(seed + dz) * 48 : 78 + hash(seed + dz) * 231;
+        const mesh = [];
+        const place = ([a, b, c]) => [gx + a, b, gz + c];
+        const accent = ['#47cde6', '#b06aff', '#fa639f', '#e9ae78'][Math.floor(hash(seed + dx + dz) * 4)];
+        box(mesh, place, -width / 2, 0, -width / 2, width, tower, width,
+          ['#111b38', '#1c2347', '#202852', '#162043', '#35436a']);
+        for (let level = 22; level < tower - 6; level += 23) {
+          const a = width / 2 + 0.04, gap = width * 0.1;
+          mesh.push({ color: accent, points: [[-a + gap, level, -a], [a - gap, level, -a],
+            [a - gap, level + 1.2, -a], [-a + gap, level + 1.2, -a]].map(place) },
+          { color: accent, points: [[a, level, -a + gap], [a, level, a - gap],
+            [a, level + 1.2, a - gap], [a, level + 1.2, -a + gap]].map(place) },
+          { color: accent, points: [[-a + gap, level, a], [a - gap, level, a],
+            [a - gap, level + 1.2, a], [-a + gap, level + 1.2, a]].map(place) },
+          { color: accent, points: [[-a, level, -a + gap], [-a, level, a - gap],
+            [-a, level + 1.2, a - gap], [-a, level + 1.2, -a + gap]].map(place) });
+        }
+        if (tower >= 147) {
+          box(mesh, place, -width * 0.31, tower, -width * 0.31, width * 0.62, 3, width * 0.62,
+            [accent, '#4f3e78', '#654b95', '#36416a', '#795690']);
+        }
+        props.push({ x: gx, y: tower * 0.66, z: gz, mesh, range: 348, pad: width });
+      }
+    }
   }
   measure([...terrain, ...road]);
-  return {
-    sky: ['#020519', '#101340'], ridge: ['#15164a', '#29184c'], ridgeScale: .16, ground: '#05091c',
-    terrain, road, trees: [], gantry, props,
-    filmShots: [
-      { progress: .05, side: -1, height: 13, sweep: 17 },
-      { progress: .34, side: 1, height: 20, sweep: -16 },
-      { progress: .62, side: -1, height: 18, sweep: 15 },
-      { progress: .89, side: 1, height: 22, sweep: -18 },
-    ],
-  };
+  return { sky: ['#04061c', '#271646'], ridge: ['#17183b', '#27204b'], ridgeScale: 0.10,
+    ground: '#060d20', terrain, road, gantry, props, trees: [],
+    filmShots: [{ progress: 0.11, side: 1, height: 29, sweep: 21 },
+      { progress: 0.64, side: 1, height: 45, sweep: 26 },
+      { progress: 0.9, side: -1, height: 32, sweep: 23 }] };
 }
 
 function chunks(faces, size) {

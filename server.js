@@ -37,6 +37,7 @@ const assets = new Map([
   ['/style.css', ['text/css', 'style.css']],
   ['/drive.js', ['text/javascript', 'drive.js']],
   ['/track.js', ['text/javascript', 'track.js']],
+  ['/neon.js', ['text/javascript', 'neon.js']],
   ['/scenery.js', ['text/javascript', 'scenery.js']],
   ['/bots.js', ['text/javascript', 'bots.js']],
   ['/audio.js', ['text/javascript', 'audio.js']],

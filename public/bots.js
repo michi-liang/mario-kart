@@ -10,10 +10,13 @@ export function botControls(track, car, road, pace) {
   const lane = road.distance > 6 ? 0 : style * 2.4;
   const skill = botPace(car.number);
   const lookAhead = (car.speed > 16 ? 6 : 4) + (car.number % 4) - 1;
-  const [x, , z] = track.coursePoint(index + lookAhead, lane);
+  const options = track.routesAt?.(index + lookAhead);
+  const route = options?.length > 1 && index < options[0].start + 22
+    ? options[(car.number - 1) % options.length] : road.route;
+  const [x, , z] = track.coursePoint(index + lookAhead, lane, 0, route);
   const angle = headingError(Math.atan2(x - car.x, z - car.z), car.yaw);
-  const [nearX, , nearZ] = track.coursePoint(index + 5);
-  const [farX, , farZ] = track.coursePoint(index + 12);
+  const [nearX, , nearZ] = track.coursePoint(index + 5, 0, 0, route);
+  const [farX, , farZ] = track.coursePoint(index + 12, 0, 0, route);
   const curve = Math.abs(headingError(Math.atan2(farX - nearX, farZ - nearZ),
     Math.atan2(road.forwardX, road.forwardZ)));
   const topSpeed = roadTopSpeed * pace;
@@ -28,8 +31,9 @@ export function botControls(track, car, road, pace) {
 }
 
 export function useBotItem(car, positions, now) {
-  if (!car.item || now < car.nextItemUse || now < car.botNextUse || car.boomerangOut ||
-      car.spinTime > 0 || car.finishedAt !== null) return false;
+  const item = car.inventoryItems[0];
+  if (!item || item.roulette || now < car.nextItemUse || now < car.botNextUse || car.boomerangOut ||
+      car.powerTime > 0 || car.spinTime > 0 || car.finishedAt !== null) return false;
   const nearby = positions.filter(other => other !== car && other.finishedAt === null);
   const dx = Math.sin(car.yaw);
   const dz = Math.cos(car.yaw);
@@ -40,11 +44,13 @@ export function useBotItem(car, positions, now) {
     return forward > 1 && forward < 28 && Math.abs(x * dz - z * dx) < 4;
   });
   const rivalAhead = positions.slice(0, positions.indexOf(car)).some(other => other.finishedAt === null);
-  const useful = car.item === 'blast' ? nearby.some(other => Math.hypot(other.x - car.x, other.z - car.z) < 7)
-    : car.item === 'blue' || car.item === 'red' ? rivalAhead
-    : car.item === 'mushroom' || car.item === 'gold' ? car.speed > 12 && !car.wallContact
-    : ['bullet', 'star', 'ghost', 'plant'].includes(car.item) ? !car.wallContact
-    : car.item === 'banana' || linedUp;
+  const type = item.type === 'tripleBanana' ? 'banana' : item.type === 'tripleGreen' ? 'green' :
+    item.type === 'tripleRed' ? 'red' : item.type;
+  const useful = type === 'blast' ? nearby.some(other => Math.hypot(other.x - car.x, other.z - car.z) < 7)
+    : type === 'blue' || type === 'red' ? rivalAhead
+    : type === 'mushroom' || type === 'gold' ? car.speed > 12 && !car.wallContact
+    : ['bullet', 'star', 'ghost', 'plant', 'coin', 'shock'].includes(type) ? !car.wallContact
+    : type === 'banana' || linedUp;
   if (!useful && now < car.nextItemUse + 5.5 + (1.04 - botPace(car.number)) * 14) return false;
   car.botNextUse = now + 0.55 + (1.04 - botPace(car.number)) * 2.1;
   return true;

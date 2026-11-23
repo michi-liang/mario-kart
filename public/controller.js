@@ -21,7 +21,7 @@ const racePlayer = document.querySelector('#race-player');
 const landscape = window.matchMedia('(orientation: landscape)');
 const pressed = new Map([brake, gas].map(button => [button, new Set()]));
 const tiltDeadZone = 1.3;
-const fullSteerAngle = 44;
+const fullSteerAngle = 47;
 const id = sessionStorage.getItem('pocket-circuit-seat') ||
   Array.from(crypto.getRandomValues(new Uint8Array(12)), byte => byte.toString(16).padStart(2, '0')).join('');
 sessionStorage.setItem('pocket-circuit-seat', id);
@@ -241,5 +241,9 @@ async function tick() {
   }
 }
 
+// Mobile Safari can still offer selection or callouts after a long touch.
+for (const event of ['contextmenu', 'selectstart', 'dblclick']) {
+  document.addEventListener(event, input => input.preventDefault());
+}
 tick();
 setInterval(tick, 40);

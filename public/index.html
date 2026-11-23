@@ -14,10 +14,20 @@
       <div class="mark" aria-hidden="true">▥</div>
       <h1>Pocket Circuit</h1>
       <span id="track-name" class="track-name">SUNBREAK COAST</span>
-      <button id="sound" class="secondary" type="button" aria-pressed="true">Sound on</button>
+      <button id="settings" class="secondary" type="button" aria-haspopup="dialog">Settings</button>
       <button id="fullscreen" class="secondary" type="button" aria-pressed="false">Fullscreen</button>
       <button id="back" class="secondary" type="button" hidden>Menu</button>
     </header>
+    <dialog id="audio-settings" class="audio-settings" aria-labelledby="settings-heading">
+      <form method="dialog">
+        <h2 id="settings-heading">Settings</h2>
+        <label for="music-level">Music <output id="music-value" for="music-level"></output></label>
+        <input id="music-level" type="range" min="0" max="100" step="1">
+        <label for="effects-level">Sound effects <output id="effects-value" for="effects-level"></output></label>
+        <input id="effects-level" type="range" min="0" max="100" step="1">
+        <button class="primary" type="submit">Done</button>
+      </form>
+    </dialog>
     <div class="layout">
       <section id="menu" class="menu" aria-label="Game modes">
         <button class="mode-option" id="single-mode" type="button"><strong>Single Player</strong><span>Race against 11 CPU drivers</span></button>
@@ -59,7 +69,10 @@
         <div class="race-stage">
           <div id="race-intro" class="viewport race-intro" hidden>
             <canvas aria-label="Opening course flyover"></canvas>
-            <div id="intro-title" class="intro-title"></div>
+            <div class="course-banner">
+              <div class="cup-emblem" aria-hidden="true"><span>✦</span><b>01</b></div>
+              <div><span class="cup-name">Cup 1</span><div id="intro-title" class="intro-title"></div></div>
+            </div>
           </div>
           <div id="views" class="views" hidden></div>
           <div id="race-countdown" class="race-countdown" role="status"></div>
@@ -74,7 +87,7 @@
         <h2>Course map</h2>
         <svg class="course-map" viewBox="0 0 120 100" aria-label="Track map">
           <path id="map-walls" />
-          <path id="map-course" /><g id="map-pickups"></g><g id="map-cars"></g>
+          <path id="map-course" /><g id="map-endpoints"></g><g id="map-pickups"></g><g id="map-cars"></g>
         </svg>
       </aside>
       <section id="results" class="results" aria-labelledby="results-heading" hidden>

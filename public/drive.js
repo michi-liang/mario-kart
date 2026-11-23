@@ -1,7 +1,8 @@
 import { trackList, tracks } from './track.js';
 import {
   advanceBullet, advanceGlider, advanceHoverEntry, advanceProgress, catchUpFactor, countdownSeconds, grassSpeedFactor,
-  hitWall, hoverBoostColor, hoverHopSeconds, hoverSpinSeconds, kartScale, launchBoostColor, launchFromGrid,
+  hitSpinPillar, hitWall, hoverBoostColor, hoverHopSeconds, hoverSpinSeconds, kartScale, launchBoostColor, launchFromGrid,
+  pillarBoostColor,
   offCourse, recoveryPose, resetProgress, roadTopSpeed,
   trickBoostColor, trickBoostSpeed, trickSpinSeconds,
   resolveKartCollisions, standings, updateWrongWay, wallClearance,
@@ -12,8 +13,8 @@ import { botControls, botPace, useBotItem } from './bots.js';
 import { createRaceAudio } from './audio.js';
 import { createDepthLayer } from './depth.js';
 import {
-  bananaSpinTime, bulletTopSpeed, createTrackItems, goldenMushroomColor, goldenMushroomSeconds,
-  itemInfo, mushroomColor, mushroomTopSpeed, rearThreat,
+  bananaSpinTime, bulletScale, bulletTopSpeed, coinLimit, coinTossSeconds, createTrackItems, goldenMushroomColor, goldenMushroomSeconds,
+  incomingThreat, itemInfo, mushroomColor, mushroomTopSpeed,
 } from './track-items.js';
 
 const select = id => document.getElementById(id);
@@ -45,14 +46,38 @@ const note = document.querySelector('#pair-note');
 const copy = document.querySelector('#copy');
 const trackLabel = select('track-name');
 const trackPicker = select('track-picker');
-const soundButton = select('sound');
 const audio = createRaceAudio();
+const audioSettings = select('audio-settings');
+const settingsKey = 'pocket-circuit.volume';
+const volume = { music: 70, effects: 85 };
+try {
+  const saved = JSON.parse(localStorage.getItem(settingsKey));
+  for (const channel of Object.keys(volume)) {
+    if (Number.isFinite(saved?.[channel])) volume[channel] = Math.max(0, Math.min(100, saved[channel]));
+  }
+} catch {
+  // The in-memory controls still work when storage is disabled.
+}
+for (const channel of Object.keys(volume)) {
+  const slider = select(channel + '-level');
+  const output = select(channel + '-value');
+  slider.value = volume[channel];
+  output.value = slider.value + '%';
+  slider.addEventListener('input', () => {
+    volume[channel] = Number(slider.value);
+    output.value = slider.value + '%';
+    audio.setLevels(volume);
+    try { localStorage.setItem(settingsKey, JSON.stringify(volume)); } catch {}
+  });
+  if (channel === 'effects') slider.addEventListener('change', () => audio.cue('ready'));
+}
+audio.setLevels(volume);
 document.addEventListener('pointerdown', () => audio.unlock(), { once: true });
 document.addEventListener('keydown', () => audio.unlock(), { once: true });
-soundButton.addEventListener('click', () => {
-  const enabled = audio.toggle();
-  soundButton.textContent = enabled ? 'Sound on' : 'Sound off';
-  soundButton.setAttribute('aria-pressed', String(enabled));
+select('settings').addEventListener('click', () => {
+  audio.unlock();
+  keys.clear();
+  audioSettings.showModal();
 });
 
 const tau = 2 * Math.PI;
@@ -63,6 +88,14 @@ const countdownStart = flyoverSeconds + gridSeconds;
 const raceStart = countdownStart + countdownSeconds;
 const itemChoices = Object.values(itemInfo);
 const rainbowColors = ['#ff637d', '#ffd454', '#a7f565', '#64edff', '#9c9cff', '#f795ff'];
+const rainbowPaint = Array.from({ length: 24 }, (_, i) => {
+  const start = Math.floor(i / 4);
+  return mix(rainbowColors[start], rainbowColors[(start + 1) % rainbowColors.length], (i % 4) / 4);
+});
+const coinIcon = '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" fill="#ffcf4f" stroke="#fff1a7" stroke-width="3"/><circle cx="20" cy="20" r="11.5" fill="#d88a23"/><path d="M17 13h6v14h-6z" fill="#fff198"/></svg>';
+const shockIcon = '<svg viewBox="0 0 40 40" aria-hidden="true"><path d="M23 2L7 23h12l-2 15 16-22H22z" fill="#fcff9a" stroke="#8e64ff" stroke-width="2"/></svg>';
+const squidIcon = '<svg viewBox="0 0 90 102" aria-hidden="true"><path d="M45 5c-5 0-28 21-34 39-5 15 7 21 14 18l-4 22q-1 10 7 4l8-14-1 19q2 10 9 2l3-14 6 14q8 9 10-2l-2-20 9 13q8 7 9-2l-7-22c9 1 17-5 10-20C73 22 52 5 45 5Z" fill="#fff8f2" stroke="#b0b7e1" stroke-width="3"/><path d="M25 48q8-13 20-2 13-10 22 3l-5 12q-9 6-17-2-8 8-17 2Z" fill="#344059"/><circle cx="36" cy="51" r="4" fill="#69efef"/><circle cx="55" cy="51" r="4" fill="#69efef"/><circle cx="45" cy="68" r="3" fill="#d4b0ed"/></svg>';
+const speedLines = '<svg viewBox="0 0 160 90" preserveAspectRatio="none"><path d="M1 10l18 8M0 29l11 3M0 54l17-2M5 80l17-8M33 89l9-8M68 0l2 7M122 0l-8 9M158 15l-18 6M159 39l-10 1M160 64l-17-4M149 85l-20-9M105 89l-5-7"/></svg>';
 const powerIcons = {
   ghost: '<path fill="#d5b6ff" stroke="#64548e" stroke-width="3" d="M11 55V29a21 21 0 1 1 42 0v26l-9-7-6 8-6-8-6 8-7-8Z"/><path fill="#211c35" d="M20 27a4 5 0 1 0 8 0 4 5 0 1 0-8 0m16 0a4 5 0 1 0 8 0 4 5 0 1 0-8 0m-9 11c4-4 7-4 10 0 2 4-12 4-10 0Z"/>',
   plant: '<path fill="#58a74a" d="M26 61c2-12 5-21 7-32h7l-4 32Z"/><path fill="#75d66b" d="M32 55C13 59 7 51 5 42c15-2 26 3 27 13Z"/><path fill="#a6486a" stroke="#6b3659" stroke-width="3" d="M9 26C14 6 39 1 54 15l-12 9-6 3 9 3 13 4C48 51 17 47 9 26Z"/><path fill="#fff2d7" d="m42 24 12-7-2 10-10 2 11 4-8 5Z"/><circle cx="23" cy="21" r="4" fill="#ffe992"/>',
@@ -79,16 +112,13 @@ const inkSplash = `<svg viewBox="0 0 160 100" aria-hidden="true">
   </g>
 </svg>`;
 const boomBoxIcon = `<svg viewBox="0 0 64 64" aria-hidden="true">
-  <g stroke="#3a2347" stroke-width="2" stroke-linejoin="round">
-    <path fill="#efc7ff" d="M7 34 32 22l25 12-25 13Z"/>
-    <path fill="currentColor" d="M7 34v15l25 13V47Z"/>
-    <path fill="#a554a1" d="M32 47v15l25-13V34Z"/>
-    <path fill="#ffe2f5" d="M24 11V5h16v6h-4V8h-8v3Z"/>
-    <rect fill="#684c87" x="13" y="11" width="38" height="24" rx="4"/>
-    <circle fill="#f0bfff" cx="22" cy="24" r="5"/>
-    <circle fill="#f0bfff" cx="42" cy="24" r="5"/>
-    <path fill="#ffeeab" d="M29 17h6v5h-6Z"/>
-    <path fill="none" d="M29 27h6m-6 4h6"/>
+  <g stroke="#522026" stroke-width="2" stroke-linejoin="round">
+    <path fill="#ff8870" d="M8 18 43 10l13 8-34 9Z"/>
+    <path fill="#ab242a" d="m8 18 14 9v31L8 46Z"/>
+    <path fill="#ef3c38" d="m22 27 34-9v31l-34 9Z"/>
+    <ellipse cx="39" cy="37" rx="11" ry="12" fill="#ffda4f" transform="rotate(16 39 37)"/>
+    <ellipse cx="39" cy="37" rx="5.5" ry="6.5" fill="#986023" transform="rotate(16 39 37)"/>
+    <path fill="#fff092" stroke="none" d="m14 27 4 3v4l-4-3Z"/>
   </g></svg>`;
 const shellIcon = '<svg viewBox="0 0 64 64" aria-hidden="true"><path fill="#f3e7d1" d="M4 43c0-7 56-7 56 0v6c0 9-56 9-56 0Z"/><path fill="currentColor" stroke="#ffffff66" stroke-width="2" d="M7 42c0-17 12-30 25-30s25 13 25 30c-8 9-42 9-50 0Z"/><path fill="none" stroke="#19253699" stroke-width="3" d="m32 12-10 14 5 12h10l5-12Zm-10 14L11 30m31-4 11 4M27 38l-8 8m18-8 8 8"/></svg>';
 const turboStages = [
@@ -119,6 +149,7 @@ let live = true;
 let lastFrame = performance.now();
 let pendingTime = 0;
 let showResultsAt = Infinity;
+let introCuePlayed = false;
 let track = tracks.coast;
 const scenes = new Map([[track.id, buildScene(track)]]);
 let scene = scenes.get(track.id);
@@ -157,7 +188,9 @@ function reset(car, index) {
     x, z, yaw, startPose: { x, z, yaw }, speed: 0, steering: 0, slip: 0, driftDirection: 0, charge: 0,
     gridSide: index % 2 ? -1 : 1,
     launchHold: 0, launchResult: '',
-    inkUntil: 0, plantUntil: 0, nextChompAt: 0, chompAt: -Infinity,
+    inkAt: 0, inkUntil: 0, shockUntil: 0, shockCount: 0, coins: 0, coinCount: 0,
+    coinTossAt: -Infinity, coinPayoutAt: 0, coinSpill: null,
+    plantUntil: 0, nextChompAt: 0, chompAt: -Infinity,
     boostTime: 0, boostColor: '', boostCount: 0, spinTime: 0, hoverSpin: 0, hoverSpinDirection: 1,
     power: null, powerTime: 0, goldUntil: 0,
     flight: null, glider: 0, landingSquash: 0, wheelFold: 0,
@@ -166,11 +199,14 @@ function reset(car, index) {
     effectTime: 0, surface: 'ON TRACK', surfaceColor: '',
     boostPadAt: -1,
     jumpPadAt: -1, jumpTime: 0, jumpHeight: 0,
-    item: null, roulette: null, itemUses: 0, nextItemUse: 0, boomerangOut: false, botNextUse: 0,
+    pillarCooldown: 0,
+    bumpX: 0, bumpZ: 0, roadRoute: null, passCooldown: 0, trickFlashAt: -Infinity,
+    inventoryItems: [], itemBoxCount: 0, itemReadyCount: 0, itemUseCount: 0, itemRow: null,
+    nextItemUse: 0, boomerangOut: false, botNextUse: 0,
     fireQueued: false, lastShellShot: car.controls.shellShot ?? 0, wallContact: false,
     canReset: false, resetQueued: false, resetCooldown: 0, lastReset: car.controls.resetRequest ?? 0,
   });
-  Object.assign(car.camera, { x, z, flightHeight: null, yaw: car.yaw, speed: 0, finishZoom: 0 });
+  Object.assign(car.camera, { x, z, flightHeight: null, view: null, yaw: car.yaw, speed: 0, finishZoom: 0 });
   resetProgress(car);
   advanceProgress(track, car, x, z, 0, 0);
 }
@@ -180,6 +216,7 @@ function seatColor(player) {
 }
 
 function createViews(players) {
+  introCuePlayed = false;
   elapsed = 0;
   pendingTime = 0;
   showResultsAt = Infinity;
@@ -214,13 +251,19 @@ function createViews(players) {
     const driverLabel = player.bot ? 'CPU ' + player.number : 'P' + player.number;
     panel.innerHTML = `
       <canvas aria-label="Chase camera for ${driverLabel}"></canvas>
+      <div class="speed-lines" aria-hidden="true" hidden>${speedLines}</div>
+      <div class="squid-warning" aria-hidden="true" hidden>${squidIcon}</div>
       <div class="ink-splash" aria-hidden="true" hidden>${inkSplash}</div>
       <div class="view-label"><strong>${driverLabel}</strong> ${roster[player.character].short}</div>
       <div class="wrong-way" role="status" hidden>Wrong Way</div>
       <div class="rear-warning" role="status" hidden><span aria-hidden="true"></span><strong></strong></div>
       <div class="launch-feedback" hidden></div>
-      <div class="inventory" aria-label="Item slot"></div>
-      <div class="race-label"><strong></strong><span></span></div>
+      <div class="inventory" role="group" aria-label="Inventory">
+        <div class="item-slot" role="img" aria-label="Empty active slot"></div>
+        <div class="item-slot" role="img" aria-label="Empty reserve slot"></div>
+      </div>
+      <div class="race-label"><strong></strong></div>
+      <div class="race-progress"><div class="coin-counter">${coinIcon}<strong>0</strong><span>/10</span></div><span class="lap-counter"></span></div>
       ${room.mode === 'test' ? '<div class="speed"><strong>0</strong><span>KM/H</span></div>' : ''}
       ${room.mode === 'play' ? '' : '<div class="surface">ON TRACK</div>'}
       ${player.bot ? '' : '<button class="kart-recovery primary" type="button" hidden>Reset kart</button>'}`;
@@ -228,13 +271,16 @@ function createViews(players) {
     car.canvas = panel.querySelector('canvas');
     car.context = car.canvas.getContext('2d', { alpha: false });
     car.inkLayer = panel.querySelector('.ink-splash');
+    car.squidLayer = panel.querySelector('.squid-warning');
+    car.fastLayer = panel.querySelector('.speed-lines');
+    car.coinLabel = panel.querySelector('.coin-counter strong');
     car.speedLabel = panel.querySelector('.speed strong');
     car.surfaceLabel = panel.querySelector('.surface');
     car.driverLabel = panel.querySelector('.view-label strong');
     car.launchLabel = panel.querySelector('.launch-feedback');
     car.placeLabel = panel.querySelector('.race-label strong');
-    car.lapLabel = panel.querySelector('.race-label span');
-    car.inventory = panel.querySelector('.inventory');
+    car.lapLabel = panel.querySelector('.lap-counter');
+    car.inventorySlots = panel.querySelectorAll('.item-slot');
     car.wrongWayLabel = panel.querySelector('.wrong-way');
     car.rearWarning = panel.querySelector('.rear-warning');
     car.resetButton = panel.querySelector('.kart-recovery');
@@ -245,13 +291,34 @@ function createViews(players) {
   startingGrid.forEach(reset);
 }
 function coursePath(item) {
+  if (item.routes) {
+    return item.routes.map(route => route.samples.filter((_, i) => !(i % 5) || i === route.samples.length - 1)
+      .map(([x, z], i) => (i ? 'L' : 'M') + item.mapPoint(x, z).map(value => value.toFixed(1)).join(' ')).join(' ')).join(' ');
+  }
   const route = item.oneWay ? item.centerline.slice(0, item.finish + 1) : item.centerline;
   return route.map(([x, , z], i) =>
     (i ? 'L' : 'M') + item.mapPoint(x, z).map(value => value.toFixed(1)).join(' ')).join(' ') +
     (item.oneWay ? '' : ' Z');
 }
 function drawMap() {
-  document.querySelector('#map-course').setAttribute('d', coursePath(track));
+  const course = select('map-course');
+  course.setAttribute('d', coursePath(track));
+  course.classList.toggle('point-to-point', Boolean(track.routes));
+  const endpoints = select('map-endpoints');
+  endpoints.replaceChildren();
+  if (track.routes) {
+    for (const [index, color, label] of [[track.startIndex, '#4eeaff', 'Start'], [track.finish, '#ffd279', 'Finish']]) {
+      const [x, , z] = track.coursePoint(index);
+      const [cx, cy] = track.mapPoint(x, z);
+      const marker = document.createElementNS(course.namespaceURI, 'circle');
+      marker.setAttribute('cx', cx);
+      marker.setAttribute('cy', cy);
+      marker.setAttribute('r', '2.3');
+      marker.setAttribute('fill', color);
+      marker.setAttribute('aria-label', label);
+      endpoints.append(marker);
+    }
+  }
   select('map-walls').setAttribute('d', track.wallSegments.map(segment =>
     segment.map(([x, z], i) => (i ? 'L' : 'M') + track.mapPoint(x, z).map(value => value.toFixed(1)).join(' ')).join(' ')).join(' '));
 }
@@ -276,7 +343,8 @@ function useTrack(id) {
 const driveKeys = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowleft', 'arrowdown', 'arrowright', 'shift', 'e']);
 window.addEventListener('keydown', event => {
   const key = event.key.toLowerCase();
-  if (room.phase !== 'racing' || !driveKeys.has(key) || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (audioSettings.open || room.phase !== 'racing' || !driveKeys.has(key) ||
+      event.ctrlKey || event.metaKey || event.altKey) return;
   event.preventDefault();
   if (key === 'e') {
     const driver = cars.find(car => !car.bot && (car.keyboard || car.number === 1));
@@ -538,9 +606,9 @@ function putBackOnTrack(car) {
   Object.assign(car, pose, {
     speed: 0, slip: 0, steering: 0, boostTime: 0, spinTime: 0, hoverSpin: 0, driftDirection: 0,
     charge: 0, wrongWayTime: 0, wallContact: false, canReset: false, resetCooldown: 0.6,
-    trickBuffer: 0, hoverHop: 0, hoverEntered: false,
+    trickBuffer: 0, hoverHop: 0, hoverEntered: false, bumpX: 0, bumpZ: 0, roadRoute: null,
   });
-  Object.assign(car.camera, pose, { speed: 0, flightHeight: null });
+  Object.assign(car.camera, pose, { speed: 0, flightHeight: null, view: null });
 }
 
 async function reportRecovery(now) {
@@ -566,7 +634,6 @@ function cpuDriving(car) {
 }
 
 function physics(car, dt, pace) {
-  const camera = car.camera;
   const previousX = car.x;
   const previousZ = car.z;
   const finished = car.finishedAt !== null;
@@ -575,7 +642,10 @@ function physics(car, dt, pace) {
   const star = car.powerTime > 0 && car.power === 'star';
   const cpu = cpuDriving(car);
   if (cpu && !finished) pace *= botPace(car.number);
-  if (car.inkUntil > elapsed - raceStart) pace *= 0.86;
+  const raceTime = elapsed - raceStart;
+  if (car.inkAt <= raceTime && car.inkUntil > raceTime) pace *= 0.86;
+  if (car.shockUntil > raceTime) pace *= 0.70;
+  pace *= 1 + car.coins * 0.004;
   const autoDrive = cpu || finished || bullet;
   const brakeTap = car.controls.brakeTap ?? 0;
   const trickTap = !autoDrive && car.spinTime <= 0 && (car.trickQueued || brakeTap > car.lastBrakeTap);
@@ -584,9 +654,15 @@ function physics(car, dt, pace) {
   const keyboard = !autoDrive && (car.keyboard || car.number === 1);
   const keyboardSteer = keyboard ? down('d', 'arrowright') - down('a', 'arrowleft') : 0;
   const keyboardThrottle = keyboard ? down('w', 'arrowup') - down('s', 'arrowdown') : 0;
-  const road = track.nearestRoad(car.x, car.z);
+  const road = track.nearestRoad(car.x, car.z, car.roadRoute);
+  const rail = track.forkRail?.(car.x, car.z, road.route);
+  if (track.routes && finished && road.index >= track.finish + 16) {
+    car.speed = 0;
+    car.boostTime = 0;
+    return;
+  }
   car.resetCooldown = Math.max(0, car.resetCooldown - dt);
-  const stranded = !bullet && offCourse(track, car, road);
+  const stranded = !bullet && offCourse(track, car, road, rail);
   car.canReset = stranded && !autoDrive && car.resetCooldown === 0;
   if (stranded) {
     if (autoDrive) {
@@ -611,36 +687,50 @@ function physics(car, dt, pace) {
   const throttle = reverseFromStop ? -1 : requestedThrottle;
   const brake = driftButton;
   const { distance } = road;
-  const hover = track.elevated ? track.profile(car.z, car.x).hover : 0;
+  const hover = track.elevated ? track.profile(car.z, car.x, road.route, road.index).hover : 0;
   advanceHoverEntry(car, hover, dt);
   car.wheelFold += (hover - car.wheelFold) * (1 - Math.exp(-7 * dt));
-  const onRoad = distance < track.widthAt(road.index) + 0.45;
+  const roadWidth = track.widthAt(road.index, road.route);
+  const onRoad = (rail?.distance ?? distance - roadWidth) < 0.45;
+  car.driveThrottle = Math.abs(throttle);
+  car.driveOffRoad = !onRoad;
   // Neon Divide's cyan lanes are fixed ground boosts. Each pad can trigger
   // once while the kart is crossing it, then is available again at the next pad.
-  const pad = track.oneWay && track.boostRows.findIndex(row =>
-    Math.abs(road.index - track.finish * row) < 4 && distance < track.widthAt(road.index) * 0.82);
+  const pad = track.boostRows?.findIndex(row =>
+    Math.abs(road.index - Math.round(track.finish * row)) < 3 && distance < roadWidth * 0.82);
   if (pad !== undefined && pad >= 0 && pad !== car.boostPadAt && !finished) {
     car.boostPadAt = pad;
-    car.boostTime = Math.max(car.boostTime, 0.7);
+    car.boostTime = Math.max(car.boostTime, 1.05);
     car.boostColor = '#57eaff';
     car.speed = Math.max(car.speed, 27);
   } else if (pad === undefined || pad < 0) {
     car.boostPadAt = -1;
   }
-  const ramp = track.oneWay && track.jumpRows.findIndex(row =>
-    Math.abs(road.index - track.finish * row) < 3 && distance < track.widthAt(road.index) * 0.72);
-  if (ramp !== undefined && ramp >= 0 && ramp !== car.jumpPadAt && car.speed > 12 && !finished) {
+  const ramp = track.jumpRows?.findIndex(row =>
+    Math.abs(road.index - Math.round(track.finish * row)) < 1.35 && distance < roadWidth + 0.1);
+  if (ramp !== undefined && ramp >= 0 && ramp !== car.jumpPadAt && car.speed > 3 && !finished) {
     car.jumpPadAt = ramp;
-    car.jumpTime = 0.48;
+    car.jumpTime = 0.82;
+    car.speed = Math.max(car.speed, 22);
     car.boostTime = Math.max(car.boostTime, 0.55);
     car.boostColor = '#ff67db';
   } else if (ramp === undefined || ramp < 0) {
     car.jumpPadAt = -1;
   }
+  const wasJumping = car.jumpTime > 0;
   car.jumpTime = Math.max(0, car.jumpTime - dt);
-  car.jumpHeight = car.jumpTime > 0 ? Math.sin(Math.PI * (1 - car.jumpTime / 0.48)) * 1.55 : 0;
+  if (track.routes && car.jumpTime > 0.58 && trickTap && raceTime - car.trickFlashAt > 0.82) {
+    car.trickCount++;
+    car.trickFlashAt = raceTime;
+  }
+  if (track.routes && wasJumping && !car.jumpTime && raceTime - car.trickFlashAt < 0.93) {
+    car.boostTime = Math.max(car.boostTime, 0.9);
+    car.boostColor = trickBoostColor;
+    car.boostCount++;
+  }
+  car.jumpHeight = car.jumpTime > 0 ? Math.sin(Math.PI * (1 - car.jumpTime / 0.82)) * 4.25 : 0;
   const driftHeld = throttle > 0 && (driftButton || keyboardDrift);
-  const canDrift = !bullet && !car.flight && car.speed > 7;
+  const canDrift = !bullet && !car.flight && !car.jumpTime && car.speed > 7;
   const mushroomBoost = car.boostTime > 0 &&
     (car.boostColor === mushroomColor || car.boostColor === goldenMushroomColor);
   const trickBoost = car.boostTime > 0 && car.boostColor === trickBoostColor;
@@ -701,33 +791,44 @@ function physics(car, dt, pace) {
   const turnRate = car.wallContact && throttle ? Math.sign(car.speed || throttle) *
     Math.max(0.85, Math.abs(movingTurnRate)) : movingTurnRate;
   const turnInput = drifting ? car.driftDirection * (0.10 + driftSteer * 1.28) : car.steering;
+  car.passCooldown = Math.max(0, car.passCooldown - dt);
+  const bumpDecay = bullet ? 0 : Math.exp(-7 * dt);
+  car.bumpX *= bumpDecay;
+  car.bumpZ *= bumpDecay;
   if (!bullet) {
-    if (!spinning) car.yaw += turnInput * turnRate * (car.flight ? 0.53 : 1) * dt;
-    car.x += Math.sin(car.yaw) * car.speed * dt;
-    car.z += Math.cos(car.yaw) * car.speed * dt;
+    const guide = track.headingAt && road.route && hover > 0.1 && !car.jumpTime && !car.flight;
+    const heading = guide ? track.headingAt(road) : 0;
+    if (guide && !spinning && !drifting && Math.abs(steer) < 0.02 && Math.abs(car.speed) > 1) {
+      const error = Math.atan2(Math.sin(heading - car.yaw), Math.cos(heading - car.yaw));
+      if (Math.abs(error) < 1.15) car.yaw += error * (1 - Math.exp(-5 * hover * dt));
+    }
+    if (!spinning) car.yaw += turnInput * turnRate * (car.flight ? 0.53 : 1) * (autoDrive ? 1 : 0.93) * dt;
+    car.x += (Math.sin(car.yaw) * car.speed + car.bumpX) * dt;
+    car.z += (Math.cos(car.yaw) * car.speed + car.bumpZ) * dt;
+    if (guide) {
+      const ahead = track.nearestRoad(car.x, car.z, road.route);
+      if (ahead.route === road.route) {
+        const turn = track.headingAt(ahead) - heading;
+        car.yaw += Math.atan2(Math.sin(turn), Math.cos(turn));
+      }
+    }
   }
-  const wall = !bullet && distance + Math.abs(car.speed) * dt > wallClearance && hitWall(track, car, previousX, previousZ);
+  const wallDistance = rail ? -rail.distance - 0.42 :
+    (track.routes ? roadWidth - 0.42 : wallClearance) - distance;
+  car.pillarCooldown = Math.max(0, car.pillarCooldown - dt);
+  const pillar = !bullet && !finished && hitSpinPillar(track, car, previousX, previousZ, road);
+  const moved = Math.hypot(car.x - previousX, car.z - previousZ);
+  const wall = !pillar && !bullet && moved > wallDistance && hitWall(track, car, previousX, previousZ);
+  const previousTrick = car.trickCount;
   advanceGlider(track, car, previousX, dt, !bullet && inputAvailable ? phone.pitch ?? 0 : 0, trickTap);
+  if (car.trickCount !== previousTrick) car.trickFlashAt = raceTime;
   car.wallContact = wall;
   updateWrongWay(car, road, dt);
-  const following = 1 - Math.exp(-8 * dt);
-  camera.x += (car.x - camera.x) * following;
-  camera.z += (car.z - camera.z) * following;
-  if (car.flight || camera.flightHeight !== null) {
-    // Smooth world height independently of the road surface, which drops
-    // abruptly when the trailing camera crosses the launch lip.
-    const target = car.flight?.y ?? track.profile(car.z, car.x).y;
-    camera.flightHeight ??= target;
-    camera.flightHeight += (target - camera.flightHeight) * (1 - Math.exp(-14 * dt));
-    if (!car.flight && Math.abs(target - camera.flightHeight) < 0.15) camera.flightHeight = null;
-  }
-  camera.yaw += (car.yaw - camera.yaw) * (1 - Math.exp(-5 * dt));
-  camera.speed += (Math.min(1.25, Math.max(0, car.speed / roadTopSpeed)) - camera.speed) * following;
-  camera.finishZoom += ((finished ? 1 : 0) - camera.finishZoom) * (1 - Math.exp(-2.6 * dt));
   const stage = drifting && turboStage(car.charge);
   car.spinTime = Math.max(0, car.spinTime - dt);
   car.hoverSpin = Math.max(0, car.hoverSpin - dt);
   car.surface = bullet ? 'BULLET BILL' : star ? 'RAINBOW STAR' :
+    pillar || (boosting && car.boostColor === pillarBoostColor) ? 'SPIN BOOST' :
     car.flight ? (car.flight.trickAt !== undefined && car.flight.time - car.flight.trickAt < trickSpinSeconds
       ? 'TRICK!' : car.flight.time > 0.26 ? 'GLIDING' : 'AIRBORNE') : spinning ? car.spinLabel : wall ? 'WALL' :
     boosting ? (mushroom ? (car.boostColor === goldenMushroomColor ? 'GOLDEN BOOST' : 'MUSHROOM BOOST') :
@@ -735,7 +836,7 @@ function physics(car, dt, pace) {
         turboStages.find(tier => tier.color === car.boostColor)?.label ?? 'TURBO') :
     stage ? stage.label + ' READY' :
     drifting ? 'DRIFTING' : car.speed < -0.2 ? 'REVERSING' : hover >= 0.5 ? 'HOVER MODE' : onRoad ? 'ON TRACK' : 'OFF ROAD';
-  car.surfaceColor = bullet || star ? itemInfo[car.power].color :
+  car.surfaceColor = bullet || star ? itemInfo[car.power].color : pillar ? pillarBoostColor :
     spinning ? car.spinColor : wall ? '#ffc29f' : boosting ? car.boostColor : stage ? stage.color : '';
 }
 
@@ -759,6 +860,10 @@ function cameraSpace([x, y, z], output = [0, 0, 0]) {
 }
 
 function surfaceOffset(x, surface, right, up, ahead) {
+  if (surface.point) {
+    return surface.point.map((value, i) =>
+      value + right * surface.right[i] + up * surface.up[i] + ahead * surface.forward[i]);
+  }
   return [x + right, surface.y + up * surface.cos + ahead * surface.sin,
     surface.z - up * surface.sin + ahead * surface.cos];
 }
@@ -774,6 +879,89 @@ function orientCamera(x, y, z, yaw, pitch, surfaceSin = 0, surfaceCos = 1) {
     ux: sin * sp, uy: fy * sp + surfaceCos * cp, uz: fz * sp - surfaceSin * cp,
     fx: sin * cp, fy: fy * cp - surfaceCos * sp, fz: fz * cp + surfaceSin * sp,
   };
+}
+
+function orientOnSurface(position, yaw, pitch, surface) {
+  const local = orientCamera(...position, yaw, pitch);
+  const worldAxis = (x, y, z) => surface.right.map((axis, i) =>
+    axis * x + surface.up[i] * y + surface.forward[i] * z);
+  const [rx, ry, rz] = worldAxis(local.rx, local.ry, local.rz);
+  const [ux, uy, uz] = worldAxis(local.ux, local.uy, local.uz);
+  const [fx, fy, fz] = worldAxis(local.fx, local.fy, local.fz);
+  return { x: position[0], y: position[1], z: position[2], rx, ry, rz, ux, uy, uz, fx, fy, fz };
+}
+
+function chaseDistance(camera) {
+  return chase.distance + camera.speed * chase.speedPullback + camera.finishZoom * 1.1;
+}
+
+function chasePitch(distance) {
+  return Math.atan2(chase.height - chase.targetHeight, distance + chase.lookAhead);
+}
+
+function elevatedView(track, car, distance, pitch) {
+  const { camera } = car;
+  const { yaw } = camera;
+  const surface = track.profile(car.z, car.x, car.roadRoute);
+  const behindX = camera.x - Math.sin(yaw) * distance;
+  const behindZ = camera.z - Math.cos(yaw) * distance;
+  if (surface.point) {
+    const origin = surfaceOffset(car.x, surface, behindX - car.x,
+      chase.height + 0.56 + car.jumpHeight * 0.26, behindZ - car.z);
+    return orientOnSurface(origin, yaw, pitch * 0.86, surface);
+  }
+  if (camera.flightHeight !== null || car.flight) {
+    const air = track.profile(camera.z, camera.x);
+    air.y = camera.flightHeight ?? car.flight.y;
+    const [x, y, z] = surfaceOffset(camera.x, air, behindX - camera.x, chase.height, behindZ - camera.z);
+    return orientCamera(x, y, z, yaw, pitch, air.sin, air.cos);
+  }
+  const [x, y, z] = track.surfacePoint(behindX, behindZ, chase.height);
+  const [aimX, aimY, aimZ] = surfaceOffset(car.x, surface,
+    Math.sin(yaw) * chase.lookAhead, chase.targetHeight, Math.cos(yaw) * chase.lookAhead);
+  const dx = aimX - x, dy = aimY - y, dz = aimZ - z;
+  const forward = dy * surface.sin + dz * surface.cos;
+  const normal = dy * surface.cos - dz * surface.sin;
+  return orientCamera(x, y, z, Math.atan2(dx, forward),
+    Math.atan2(-normal, Math.hypot(dx, forward)), surface.sin, surface.cos);
+}
+
+function smoothCameraView(current, target, positionBlend, angleBlend) {
+  if (!current) return target;
+  const mix = (key, blend) => current[key] + (target[key] - current[key]) * blend;
+  const unit = (x, y, z) => {
+    const length = Math.hypot(x, y, z);
+    return [x / length, y / length, z / length];
+  };
+  const [fx, fy, fz] = unit(mix('fx', angleBlend), mix('fy', angleBlend), mix('fz', angleBlend));
+  const x = mix('rx', angleBlend), y = mix('ry', angleBlend), z = mix('rz', angleBlend);
+  const [ux, uy, uz] = unit(fy * z - fz * y, fz * x - fx * z, fx * y - fy * x);
+  return { x: mix('x', positionBlend), y: mix('y', positionBlend), z: mix('z', positionBlend),
+    fx, fy, fz, ux, uy, uz, rx: uy * fz - uz * fy, ry: uz * fx - ux * fz, rz: ux * fy - uy * fx };
+}
+
+function followCamera(track, car, dt) {
+  const { camera } = car;
+  const following = 1 - Math.exp(-8 * dt);
+  camera.x += (car.x - camera.x) * following;
+  camera.z += (car.z - camera.z) * following;
+  if (car.flight || camera.flightHeight !== null) {
+    const target = car.flight?.y ?? track.profile(car.z, car.x, car.roadRoute).y;
+    camera.flightHeight ??= target;
+    camera.flightHeight += (target - camera.flightHeight) * (1 - Math.exp(-14 * dt));
+    if (!car.flight && Math.abs(target - camera.flightHeight) < 0.15) camera.flightHeight = null;
+  }
+  const turn = car.yaw - camera.yaw;
+  camera.yaw += Math.atan2(Math.sin(turn), Math.cos(turn)) * (1 - Math.exp(-5 * dt));
+  camera.speed += (Math.min(1.25, Math.max(0, car.speed / roadTopSpeed)) - camera.speed) * following;
+  camera.finishZoom += ((car.finishedAt === null ? 0 : 1) - camera.finishZoom) * (1 - Math.exp(-2.6 * dt));
+  if (track.elevated) {
+    const distance = chaseDistance(camera);
+    const target = elevatedView(track, car, distance, chasePitch(distance));
+    // Horizontal chase already follows camera.x/z. Smooth the last bit of
+    // world-space motion and the bank separately so the camera can follow a roll.
+    camera.view = smoothCameraView(camera.view, target, 1 - Math.exp(-16 * dt), following);
+  }
 }
 
 function projectFace(points, output) {
@@ -870,14 +1058,15 @@ function queueFace({ points, color, cull, opacity = 1 }) {
 function carMesh(car) {
   const spin = car.spinTime > 0 ? tau * (1 - car.spinTime / bananaSpinTime) :
     car.hoverSpin > 0 ? car.hoverSpinDirection * tau * (1 - car.hoverSpin / hoverSpinSeconds) : 0;
-  const trickPhase = car.flight?.trickAt === undefined ? 0 :
-    Math.min(1, (car.flight.time - car.flight.trickAt) / trickSpinSeconds);
-  const trickSpin = (car.flight?.trickDirection ?? 0) * tau * trickPhase ** 2 * (3 - 2 * trickPhase);
+  const jumpTrick = car.jumpTime > 0 && elapsed - raceStart - car.trickFlashAt < trickSpinSeconds;
+  const trickPhase = jumpTrick ? (elapsed - raceStart - car.trickFlashAt) / trickSpinSeconds :
+    car.flight?.trickAt === undefined ? 0 : Math.min(1, (car.flight.time - car.flight.trickAt) / trickSpinSeconds);
+  const trickSpin = (jumpTrick ? 1 : car.flight?.trickDirection ?? 0) * tau * trickPhase ** 2 * (3 - 2 * trickPhase);
   const sin = Math.sin(car.yaw + car.slip + spin + trickSpin);
   const cos = Math.cos(car.yaw + car.slip + spin + trickSpin);
   const driver = roster[car.character];
   const mesh = [];
-  const surface = track.profile(car.z, car.x);
+  const surface = track.profile(car.z, car.x, car.roadRoute);
   if (car.flight) surface.y = car.flight.y;
   const hover = car.wheelFold;
   const hopPhase = 1 - car.hoverHop / hoverHopSeconds;
@@ -893,14 +1082,16 @@ function carMesh(car) {
     const bankedUp = x * rollSin + y * rollCos;
     const ahead = z * pitchCos - bankedUp * pitchSin;
     const up = bankedUp * pitchCos + z * pitchSin;
-    return surfaceOffset(car.x, surface, kartScale * (across * cos + ahead * sin),
-      (up * (1 - 0.14 * car.landingSquash) + hoverLift) * kartScale, kartScale * (ahead * cos - across * sin));
+    const size = kartScale * (car.shockUntil > elapsed - raceStart ? 0.66 : 1);
+    return surfaceOffset(car.x, surface, size * (across * cos + ahead * sin),
+      (up * (1 - 0.14 * car.landingSquash) + hoverLift) * size, size * (ahead * cos - across * sin));
   };
   if (car.powerTime > 0 && car.power === 'bullet') {
-    ellipsoid(mesh, place, [0, 1.35, 0.2], [1.22, 1.14, 2.55], ['#1a2437', '#313d59', '#546384']);
-    ellipsoid(mesh, place, [0, 1.35, -1.85], [1.06, 0.96, 0.55], ['#663f3d', '#d08a52', '#f8b06d']);
+    const placeBullet = point => place(point.map(value => value * bulletScale));
+    ellipsoid(mesh, placeBullet, [0, 1.35, 0.2], [1.22, 1.14, 2.55], ['#1a2437', '#313d59', '#546384']);
+    ellipsoid(mesh, placeBullet, [0, 1.35, -1.85], [1.06, 0.96, 0.55], ['#663f3d', '#d08a52', '#f8b06d']);
     for (const side of [-1, 1]) {
-      ellipsoid(mesh, place, [1.02 * side, 1.47, 0.62], [0.19, 0.31, 0.88],
+      ellipsoid(mesh, placeBullet, [1.02 * side, 1.47, 0.62], [0.19, 0.31, 0.88],
         ['#3ba6d9', '#7ae8ff', '#dafaff']);
     }
     return mesh;
@@ -923,7 +1114,8 @@ function carMesh(car) {
     const mast = 1.85 + 1.4 * deployment;
     box(mesh, place, -0.065, 1.15, -0.5, 0.13, mast - 1.15, 0.13, ['#b9d2dc']);
     for (const side of [-1, 1]) {
-      const tip = [side * (0.2 + 4.0 * deployment), mast - 0.4 * deployment, -1.36];
+      const flutter = (Math.sin(elapsed * 12 + side * 1.15) * 0.105 + Math.sin(elapsed * 6) * 0.14) * deployment;
+      const tip = [side * (0.2 + 4.0 * deployment), mast - 0.4 * deployment + flutter, -1.36 + flutter * 0.5];
       const ridge = [0, mast + 0.36 * deployment, 0.46];
       const tail = [0, mast - 0.14, -1.63];
       mesh.push({ points: [tip, ridge, tail].map(place), color: side < 0 ? driver.kart : driver.accent });
@@ -980,12 +1172,36 @@ function carMesh(car) {
   for (const x of [-0.51, 0.38]) box(mesh, place, x, 0.44, -1.51, 0.13, 0.11, 0.13, ['#ff886a']);
   wingMesh(mesh, place, driver);
   driverMesh(mesh, place, car, driver);
-  if (car.item === 'green' && car.finishedAt === null) {
+  const held = car.inventoryItems[0];
+  if (held && !held.roulette && car.finishedAt === null) {
     const hover = 0.34 + 0.12 * Math.sin(car.effectTime * 5);
-    for (const face of shellMesh) {
-      mesh.push({ ...face, points: face.points.map(([x, y, z]) => place([
-        x * 0.8, y * 0.8 + hover, z * 0.8 - 2.65,
-      ])) });
+    const projectile = itemInfo[held.type].projectile;
+    if (projectile || held.type === 'green') {
+      for (let i = 0; i < held.uses; i++) {
+        const orbit = car.effectTime * 2.4 + i * tau / held.uses;
+        const offX = projectile ? Math.cos(orbit) * 2.8 : 0;
+        const offZ = projectile ? Math.sin(orbit) * 3.1 : -2.65;
+        for (const face of itemMeshes[projectile ?? 'green']) {
+          mesh.push({ ...face, points: face.points.map(([x, y, z]) => place([
+            x * 0.8 + offX, y * 0.8 + hover, z * 0.8 + offZ,
+          ])) });
+        }
+      }
+    }
+  }
+  const toss = (elapsed - raceStart - car.coinTossAt) / coinTossSeconds;
+  if (toss >= 0 && toss < 1) {
+    const angle = toss * tau * 3.4;
+    const lift = 1.45 + Math.sin(Math.PI * toss) * 2.6;
+    for (const face of coinMesh) mesh.push({ ...face, opacity: Math.min(1, (1 - toss) * 7),
+      points: face.points.map(([x, y, z]) => place([x * Math.cos(angle) + z * Math.sin(angle),
+        y + lift, z * Math.cos(angle) - x * Math.sin(angle) + 0.25])) });
+  }
+  if (car.powerTime > 0 && car.power === 'star') {
+    const phase = elapsed * 5.5;
+    for (const [index, face] of mesh.entries()) {
+      const hue = (phase * 60 + face.points[0][0] * 72 + face.points[0][1] * 47 + index * 0.71) % 360;
+      face.color = rainbowPaint[Math.floor((hue + 360) % 360 / 15)];
     }
   }
   return mesh;
@@ -1084,23 +1300,51 @@ function drawTurbo(car) {
   const stage = turboStage(car.charge);
   const rainbow = car.powerTime > 0 && car.power === 'star';
   const boosting = car.boostTime > 0 || car.powerTime > 0;
-  if (!stage && !boosting) return;
-  const color = car.powerTime > 0 ? itemInfo[car.power].color : boosting ? car.boostColor : stage.color;
+  const drifting = Boolean(car.driftDirection) && !car.flight && !car.jumpTime;
+  const trickAge = elapsed - raceStart - car.trickFlashAt;
+  if (!drifting && !boosting && trickAge >= 0.52) return;
+  const color = car.powerTime > 0 ? itemInfo[car.power].color : boosting ? car.boostColor : stage?.color ?? '#fff2a8';
   const sin = Math.sin(car.yaw + car.slip);
   const cos = Math.cos(car.yaw + car.slip);
-  const surface = track.profile(car.z, car.x);
+  const surface = track.profile(car.z, car.x, car.roadRoute);
   if (car.flight) surface.y = car.flight.y;
+  if (trickAge < 0.52) {
+    const t = trickAge / 0.52;
+    const radius = 0.85 + t * 2.45;
+    const point = (i, r) => surfaceOffset(car.x, surface, r * Math.sin(i * tau / 18),
+      0.45 + (car.jumpHeight ?? 0) * kartScale + t * 0.9, r * Math.cos(i * tau / 18));
+    for (let i = 0; i < 18; i++) queueFace({ color: rainbowColors[i % 6], opacity: 0.92 * (1 - t),
+      points: [point(i, radius), point(i + 1, radius), point(i + 1, radius - 0.13), point(i, radius - 0.13)] });
+  }
+  if (!drifting && !boosting) return;
+  const atTire = (x, y, z) => surfaceOffset(car.x, surface, kartScale * (x * cos + z * sin),
+    y * kartScale, kartScale * (z * cos - x * sin));
   for (const side of [-1, 1]) {
+    if (drifting) {
+      for (let i = 0; i < 4; i++) {
+        const t = (car.effectTime * 3.1 + i * 0.25) % 1;
+        const x = side * (1.3 + t * 1.65), y = 0.12 + t * 0.24, z = -1.18 - t * 2.8;
+        const puff = 0.14 + t * 0.60;
+        queueFace({ color: '#c0c0c5', opacity: (1 - t) * 0.34,
+          points: [atTire(x - puff, y, z), atTire(x, y + puff * 0.22, z - puff), atTire(x + puff, y, z),
+            atTire(x, Math.max(0.04, y - puff * 0.19), z + puff)] });
+      }
+    }
     for (let i = 0; i < (boosting ? 15 : 9); i++) {
       const t = (car.effectTime * (boosting ? 5.8 : 4.1) + i * 0.618) % 1;
       const x = side * (0.96 + t * (boosting ? 0.75 : 0.35));
       const z = -1.04 - t * (boosting ? 6.5 : 1.3);
-      const y = 0.15 + Math.sin(t * Math.PI) * (boosting ? 0.85 : 0.35);
-      const size = 0.035 + (1 - t) * (boosting ? 0.22 : 0.095);
+      const y = boosting ? 0.15 + Math.sin(t * Math.PI) * 0.85 : 0.05 + (1 - t) * 0.13;
+      const size = 0.035 + (1 - t) * (boosting ? 0.22 : 0.26);
       const tint = rainbow ? rainbowColors[(i + Math.floor(car.effectTime * 15)) % rainbowColors.length] :
         boosting && t < 0.25 ? '#fff2b0' : color;
-      const world = surfaceOffset(car.x, surface, kartScale * (x * cos + z * sin),
-        y * kartScale, kartScale * (z * cos - x * sin));
+      const world = atTire(x, y, z);
+      if (!boosting) {
+        queueFace({ color: i % 3 === 0 ? '#fffef6' : tint, opacity: 0.95 - t * 0.48,
+          points: [world, atTire(x + side * 0.30, y + 0.17, z - size * 7),
+            atTire(x - side * 0.17, 0.045, z - size * 3.4)] });
+        continue;
+      }
       const [px, py, pz] = cameraSpace(world);
       const spread = boosting ? size * 1.55 : size;
       const points = [[px - spread, py, pz], [px, py + size, pz], [px + spread, py, pz], [px, py - size, pz]];
@@ -1118,6 +1362,29 @@ function drawTurbo(car) {
       } else polygon(points, tint);
     }
   }
+}
+
+function lightningMesh(surface, origin, age) {
+  const mesh = [];
+  const up = surface.up ?? [0, surface.cos, -surface.sin];
+  const right = [view.rx, view.ry, view.rz];
+  const depth = [view.fx, view.fy, view.fz];
+  const visible = Math.max(0, 1 - age / 0.42);
+  const point = (level, x, z) => origin.map((value, i) => value + up[i] * level + right[i] * x + depth[i] * z);
+  const bolt = [point(0.58, 0, 0), point(2.1, 0.27, 0.15), point(3.5, -0.46, 0.38),
+    point(5.6, 0.54, -0.15), point(7.5, -0.43, 0.22), point(13, 0.35, 0.4)];
+  const segment = (a, b, width, color, opacity) => {
+    const edge = (p, sign) => p.map((value, i) => value + right[i] * width * sign);
+    mesh.push({ points: [edge(a, -1), edge(a, 1), edge(b, 1), edge(b, -1)], color, opacity });
+  };
+  const reached = Math.max(1, Math.min(bolt.length - 1, Math.ceil(age * 62)));
+  for (let i = bolt.length - reached; i < bolt.length; i++) {
+    segment(bolt[i - 1], bolt[i], 0.22, '#9f81ff', visible * 0.60);
+    segment(bolt[i - 1], bolt[i], 0.075, '#fffef3', visible);
+  }
+  if (reached >= 3) segment(bolt[3], point(4.7, 1.35, 0.1), 0.07, '#e4d7ff', visible * 0.8);
+  if (reached >= 4) segment(bolt[2], point(2.9, -1.25, 0.3), 0.055, '#e4d7ff', visible * 0.8);
+  return mesh;
 }
 
 const blueBlastMesh = [];
@@ -1186,6 +1453,12 @@ for (let peel = 0; peel < 3; peel++) {
     { points: [right, fold, tip], color: '#fff08b' },
   );
 }
+const coinMesh = [];
+ellipsoid(coinMesh, point => point, [0, 0.87, 0], [0.47, 0.47, 0.105], ['#bd6f16', '#ffb738', '#fff0a4'], 4, 10);
+for (const side of [-1, 1]) {
+  coinMesh.push({ color: '#fff3a9', points: [[-0.08, 0.62, 0.108 * side], [0.08, 0.62, 0.108 * side],
+    [0.08, 1.12, 0.108 * side], [-0.08, 1.12, 0.108 * side]] });
+}
 
 itemMeshes.banana = bananaMesh;
 
@@ -1229,16 +1502,34 @@ function panCourse(now) {
 
 function gridCamera(car) {
   const t = smooth(Math.min(1, (elapsed - flyoverSeconds) / gridSeconds));
-  const bearing = car.yaw + (1 - t) * car.gridSide * 0.93;
-  const distance = chase.distance + (1 - t) * 11;
-  const height = chase.height + (1 - t) * 5;
+  const bearing = car.yaw + (1 - t) * car.gridSide * 2.28;
+  const distance = chase.distance + (1 - t) * 2.8 - Math.sin(t * Math.PI) * 2.2;
+  const height = chase.height - (1 - t) * 1.5;
   const x = car.x - Math.sin(bearing) * distance;
   const z = car.z - Math.cos(bearing) * distance;
-  const targetX = car.x + Math.sin(car.yaw) * chase.lookAhead;
-  const targetZ = car.z + Math.cos(car.yaw) * chase.lookAhead;
+  const targetX = car.x + Math.sin(car.yaw) * chase.lookAhead * t ** 3;
+  const targetZ = car.z + Math.cos(car.yaw) * chase.lookAhead * t ** 3;
   const yaw = Math.atan2(targetX - x, targetZ - z);
   const pitch = Math.atan2(height - chase.targetHeight, Math.hypot(targetX - x, targetZ - z));
-  return { x, z, yaw, pitch, height, fov: chase.fieldOfView + (1 - t) * 7 };
+  return { x, z, yaw, pitch, height: height + (track.routes ? track.profile(car.z, car.x).y : 0),
+    fov: chase.fieldOfView - Math.sin(t * Math.PI) * 9 };
+}
+
+function blurBoost(canvas, car, pixels) {
+  if (!car || reduceMotion.matches || car.speed < 18 ||
+      !(car.boostTime > 0 || car.powerTime > 0)) return;
+  const [w, h] = pixels;
+  const gutter = Math.round(w * 0.17);
+  const shift = Math.max(2, Math.round(w * Math.min(0.015, car.speed * 0.00034)));
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  for (let pass = 1; pass <= 2; pass++) {
+    const spread = shift * pass;
+    ctx.globalAlpha = pass === 1 ? 0.24 : 0.13;
+    ctx.drawImage(canvas, 0, 0, gutter, h, -spread, -spread, gutter, h + spread * 2);
+    ctx.drawImage(canvas, w - gutter, 0, gutter, h, w - gutter + spread, -spread, gutter, h + spread * 2);
+  }
+  ctx.restore();
 }
 
 function draw(car, shot, externalView, renderTrack = track, renderScene = scene) {
@@ -1264,31 +1555,17 @@ function draw(car, shot, externalView, renderTrack = track, renderScene = scene)
   halfHeight = height / 2;
   frustumSide = halfWidth / focal;
   frustumNormal = Math.hypot(1, frustumSide);
-  const distance = shot ? 0 : chase.distance + camera.speed * chase.speedPullback + camera.finishZoom * 1.1;
-  const pitch = shot ? shot.pitch : Math.atan2(chase.height - chase.targetHeight, distance + chase.lookAhead);
+  const distance = shot ? 0 : chaseDistance(camera);
+  const pitch = shot ? shot.pitch : chasePitch(distance);
   const yaw = shot ? shot.yaw : camera.yaw;
   if (shot) {
     view = orientCamera(shot.x, shot.height, shot.z, yaw, pitch);
+  } else if (track.elevated) {
+    view = camera.view ?? elevatedView(track, car, distance, pitch);
   } else {
-    const surface = track.profile(camera.z, camera.x);
-    if (camera.flightHeight !== null) surface.y = camera.flightHeight;
-    const carSurface = track.profile(car.z, car.x);
-    if (track.elevated && camera.flightHeight === null) {
-      const behindX = camera.x - Math.sin(yaw) * distance;
-      const behindZ = camera.z - Math.cos(yaw) * distance;
-      const [x, y, z] = track.surfacePoint(behindX, behindZ, chase.height);
-      const [aimX, aimY, aimZ] = surfaceOffset(car.x, carSurface,
-        Math.sin(yaw) * chase.lookAhead, chase.targetHeight, Math.cos(yaw) * chase.lookAhead);
-      const dx = aimX - x, dy = aimY - y, dz = aimZ - z;
-      const forward = dy * carSurface.sin + dz * carSurface.cos;
-      const normal = dy * carSurface.cos - dz * carSurface.sin;
-      view = orientCamera(x, y, z, Math.atan2(dx, forward),
-        Math.atan2(-normal, Math.hypot(dx, forward)), carSurface.sin, carSurface.cos);
-    } else {
-      const [x, y, z] = surfaceOffset(camera.x, { ...surface, sin: carSurface.sin, cos: carSurface.cos },
-        -Math.sin(yaw) * distance, chase.height, -Math.cos(yaw) * distance);
-      view = orientCamera(x, y, z, yaw, pitch, carSurface.sin, carSurface.cos);
-    }
+    const [x, y, z] = track.surfacePoint(camera.x - Math.sin(yaw) * distance,
+      camera.z - Math.cos(yaw) * distance, chase.height);
+    view = orientCamera(x, y, z, yaw, pitch);
   }
 
   const sky = ctx.createLinearGradient(0, 0, 0, height * 0.4);
@@ -1335,33 +1612,46 @@ function draw(car, shot, externalView, renderTrack = track, renderScene = scene)
   }
   if (target) {
     for (const rival of cars) {
-      const position = track.surfacePoint(rival.x, rival.z);
+      const position = track.surfacePoint(rival.x, rival.z, 0, rival.roadRoute);
       if (rival.flight) position[1] = rival.flight.y;
       const [x, , z] = cameraSpace(position, location);
       if (z < 1 || z > 104 || Math.abs(x) > z * frustumSide + 3) continue;
       if (rival === car || z < 45) drawTurbo(rival);
       faces.push(...(rival.mesh ??= carMesh(rival)));
+      const shockAge = 4 - (rival.shockUntil - (elapsed - raceStart));
+      if (rival.shockUntil && shockAge >= 0 && shockAge < 0.42) {
+        faces.push(...lightningMesh(track.profile(rival.z, rival.x, rival.roadRoute), position, shockAge));
+      }
     }
     const raceTime = elapsed - raceStart;
-    for (const item of [...trackItems.boxes, ...trackItems.objects]) {
-      if (item.type === 'box' && item.availableAt > raceTime && item.availableAt > 0) continue;
-      const surface = track.profile(item.z, item.x);
-      const [x, , z] = cameraSpace([item.x, surface.y, surface.z], location);
+    for (const item of [...trackItems.boxes, ...trackItems.coins, ...trackItems.droppedCoins, ...trackItems.objects]) {
+      if (item.collected || (item.availableAt > raceTime && item.availableAt > 0)) continue;
+      if (item.type === 'coin' && (Math.abs(item.x - view.x) > 95 || Math.abs(item.z - view.z) > 95)) continue;
+      const dropping = item.dropAt !== undefined && raceTime < item.landAt;
+      const travel = dropping ? Math.max(0, (raceTime - item.dropAt) / (item.landAt - item.dropAt)) : 1;
+      const worldX = dropping ? item.fromX + (item.x - item.fromX) * travel : item.x;
+      const worldZ = dropping ? item.fromZ + (item.z - item.fromZ) * travel : item.z;
+      const surface = track.profile(worldZ, worldX, item.route, item.index);
+      const [x, , z] = cameraSpace(surface.point ?? [worldX, surface.y, surface.z], location);
       if (z < 0.5 || z > 90 || Math.abs(x) > z * frustumSide + 2.5) continue;
       const floating = item.type === 'box';
-      const angle = floating ? elapsed * 1.6 + item.id : item.type === 'boomerang' ? elapsed * 18 : 0;
-      const lift = floating ? 1.48 + Math.sin(elapsed * 3.8 + item.id) * 0.18 :
+      const angle = floating || item.type === 'coin' ? elapsed * 1.9 + item.id : item.type === 'boomerang' ? elapsed * 18 : 0;
+      const lift = dropping ? 1.65 * Math.sin(Math.PI * travel) : floating ? 1.48 + Math.sin(elapsed * 3.8 + item.id) * 0.18 :
         item.type === 'banana' && raceTime < item.landAt ? Math.sin(Math.PI * (item.landAt - raceTime) / 0.52) * 1.4 :
         item.type === 'blue' ? 0.6 : 0;
       const sin = Math.sin(angle);
       const cos = Math.cos(angle);
-      for (const face of floating ? itemBoxMesh : itemMeshes[item.type]) {
-        faces.push({ ...face, points: face.points.map(([a, y, b]) =>
-          surfaceOffset(item.x, surface, a * cos + b * sin, y + lift, b * cos - a * sin)) });
+      for (const rise of item.double ? [-0.18, 1.25] : [0]) {
+        for (const face of floating ? itemBoxMesh : item.type === 'coin' ? coinMesh : itemMeshes[item.type]) {
+          const scale = item.double ? 0.84 : 1;
+          faces.push({ ...face, points: face.points.map(([a, y, b]) =>
+            surfaceOffset(worldX, surface, (a * cos + b * sin) * scale, y * scale + lift + rise,
+              (b * cos - a * sin) * scale)) });
+        }
       }
     }
     for (const wave of trackItems.effects) {
-      const surface = track.profile(wave.z, wave.x);
+      const surface = track.profile(wave.z, wave.x, wave.route);
       if (wave.type === 'sphere') {
         const age = Math.max(0, Math.min(1, (raceTime - wave.born) / (wave.expires - wave.born)));
         const radius = wave.radius * (0.12 + 0.98 * (1 - (1 - age) ** 2));
@@ -1379,7 +1669,7 @@ function draw(car, shot, externalView, renderTrack = track, renderScene = scene)
       }
       const radius = wave.radius * (0.28 + (raceTime - wave.born) * 1.8);
       const point = (i, r) => surfaceOffset(wave.x, surface,
-        r * Math.sin(i * tau / 18), 0.21, r * Math.cos(i * tau / 18));
+        r * Math.sin(i * tau / 18), 0.21 + (wave.lift ?? 0), r * Math.cos(i * tau / 18));
       for (let i = 0; i < 18; i++) {
         faces.push({ points: [point(i, radius), point(i + 1, radius), point(i + 1, radius - 0.26),
           point(i, radius - 0.26)], color: wave.color });
@@ -1395,7 +1685,10 @@ function draw(car, shot, externalView, renderTrack = track, renderScene = scene)
     if (z > -4 && z < prop.range && Math.abs(x) < z * frustumSide + prop.pad) faces.push(...prop.mesh);
   }
   for (const face of faces) queueFace(face);
-  if (track.elevated && depthLayer?.draw(projected, width, height, focal, ctx, pixels)) return;
+  if (track.elevated && depthLayer?.draw(projected, width, height, focal, ctx, pixels)) {
+    if (!shot) blurBoost(canvas, car, pixels);
+    return;
+  }
   for (const face of projected) {
     let depth = 0;
     for (const point of face.points) depth += point[2];
@@ -1408,6 +1701,7 @@ function draw(car, shot, externalView, renderTrack = track, renderScene = scene)
     paintPolygon(face.points, face.color);
   }
   ctx.globalAlpha = 1;
+  if (!shot) blurBoost(canvas, car, pixels);
 }
 
 function setText(element, text) {
@@ -1416,6 +1710,10 @@ function setText(element, text) {
 
 function itemIcon(item) {
   if (item === itemInfo.blast) return boomBoxIcon;
+  if (item.icon === 'coin') return coinIcon;
+  if (item.icon === 'shock') return shockIcon;
+  if (item.icon === 'shell') return shellIcon;
+  if (item.icon === 'ghost') return squidIcon;
   const powerIcon = powerIcons[item.icon];
   if (powerIcon) return `<svg viewBox="0 0 64 64" aria-hidden="true">${powerIcon}</svg>`;
   return item.icon === '◆' ? shellIcon : item.icon;
@@ -1430,7 +1728,7 @@ function hud() {
   const threats = [...trackItems.objects];
   for (const car of cars) {
     if (car.powerTime > 0 && car.power === 'bullet') threats.push({
-      type: 'bullet', owner: car.number, x: car.x, z: car.z,
+      id: 'bullet-' + car.number, type: 'bullet', owner: car.number, x: car.x, z: car.z,
       vx: Math.sin(car.yaw) * car.speed, vz: Math.cos(car.yaw) * car.speed,
     });
   }
@@ -1448,12 +1746,20 @@ function hud() {
         car.launchLabel.dataset.result = car.launchResult;
         setText(car.launchLabel, car.launchResult === 'boost' ? 'BOOST START' : 'BURNOUT');
       }
-      const ink = car.inkUntil > 0 ? car.inkUntil - (elapsed - raceStart) : 0;
-      car.inkLayer.hidden = ink <= 0 || car.finishedAt !== null;
+      const raceTime = elapsed - raceStart;
+      const ink = car.inkUntil - raceTime;
+      const pendingInk = car.inkAt - raceTime;
+      car.squidLayer.hidden = car.inkAt === 0 || pendingInk <= 0 || pendingInk > 1.02 || car.finishedAt !== null;
+      car.inkLayer.hidden = car.inkAt === 0 || ink <= 0 || pendingInk > 0 || car.finishedAt !== null;
       if (!car.inkLayer.hidden) car.inkLayer.style.opacity = Math.min(0.94, ink * 0.83);
+      const rush = Math.max(0, Math.min(0.67, (car.speed - roadTopSpeed - 1.8) * 0.09));
+      car.fastLayer.hidden = rush === 0 || car.finishedAt !== null;
+      if (rush) car.fastLayer.style.opacity = rush;
+      setText(car.coinLabel, String(Math.min(car.coins, coinLimit)));
       const hideWarning = car.finishedAt !== null || car.wrongWayTime < 0.45;
       if (car.wrongWayLabel.hidden !== hideWarning) car.wrongWayLabel.hidden = hideWarning;
-      const incoming = rearThreat(car, threats);
+      const incoming = incomingThreat(car, threats);
+      car.threatId = incoming ? incoming.type + '/' + incoming.id : null;
       car.rearWarning.hidden = !incoming;
       if (incoming) {
         const item = itemInfo[incoming.type];
@@ -1462,28 +1768,35 @@ function hud() {
           car.rearWarning.dataset.item = incoming.type;
           car.rearWarning.style.setProperty('--threat-color', item.color);
           car.rearWarning.firstElementChild.innerHTML = itemIcon(item);
-          setText(car.rearWarning.lastElementChild, item.label + ' behind');
         }
+        setText(car.rearWarning.lastElementChild, item.label + (incoming.front ? ' ahead' : ' behind'));
       }
       setText(car.placeLabel, (index + 1) + (['st', 'nd', 'rd'][index] ?? 'th'));
+      car.placeLabel.dataset.place = String(Math.min(index + 1, 4));
       setText(car.lapLabel, car.finishedAt === null ? (track.oneWay ? 'RUN ' +
         Math.min(100, Math.round(car.progress / track.finish * 100)) + '%' :
         'Lap ' + Math.min(track.laps, car.lap + 1) + '/' + track.laps) : 'Finished');
-      const roulette = car.roulette;
-      const badge = roulette ? itemChoices[rouletteFrame(roulette) % itemChoices.length] :
-        itemInfo[car.item];
-      const label = car.finishedAt !== null ? '' : badge?.label ?? '';
-      if (label && car.goldUntil) {
-        const remaining = Math.max(0, car.goldUntil - (elapsed - raceStart)) / goldenMushroomSeconds;
-        car.inventory.style.setProperty('--item-time', String(remaining));
-      } else if (car.inventory.style.getPropertyValue('--item-time')) {
-        car.inventory.style.removeProperty('--item-time');
-      }
-      if (car.inventory.dataset.item !== label) {
-        car.inventory.dataset.item = label;
-        car.inventory.innerHTML = label ? itemIcon(badge) : '';
-        car.inventory.style.setProperty('--item-color', label ? badge.color : '');
-        car.inventory.setAttribute('aria-label', label || 'Empty item slot');
+      for (const [slotNumber, element] of car.inventorySlots.entries()) {
+        const slot = car.finishedAt === null ? car.inventoryItems[slotNumber] : null;
+        const rolling = slot?.roulette;
+        const badge = rolling ? itemChoices[(rouletteFrame(rolling) + slotNumber * 5) % itemChoices.length] :
+          itemInfo[slot?.type];
+        const count = !rolling && slot?.uses > 1 ? slot.uses : '';
+        const label = badge?.label ?? '';
+        if (slotNumber === 0 && car.goldUntil && label) {
+          const remaining = Math.max(0, car.goldUntil - (elapsed - raceStart)) / goldenMushroomSeconds;
+          element.style.setProperty('--item-time', String(remaining));
+        } else if (element.style.getPropertyValue('--item-time')) {
+          element.style.removeProperty('--item-time');
+        }
+        const display = label + count + Boolean(rolling);
+        if (element.dataset.item !== display) {
+          element.dataset.item = display;
+          element.innerHTML = (badge ? itemIcon(badge) : '') + (count ? `<span>${count}</span>` : '');
+          element.style.setProperty('--item-color', badge?.color ?? '');
+          element.setAttribute('aria-label', rolling ? 'Rolling for item' :
+            label ? label + (count ? ', ' + count + ' uses' : '') : slotNumber ? 'Empty reserve slot' : 'Empty active slot');
+        }
       }
     }
     const [x, y] = track.mapPoint(car.x, car.z);
@@ -1520,6 +1833,10 @@ function hud() {
 }
 
 function raceAudio() {
+  if (!introCuePlayed) {
+    introCuePlayed = true;
+    audio.cue('cup');
+  }
   const countdown = elapsed < countdownStart ? '' : elapsed < raceStart
     ? String(Math.ceil(raceStart - elapsed)) : elapsed < raceStart + 0.85 ? 'GO!' : '';
   if (countdownLabel.textContent !== countdown) {
@@ -1530,38 +1847,58 @@ function raceAudio() {
   const humans = cars.filter(car => !car.bot);
   for (const car of humans) {
     const previous = car.audioState;
-    const roll = car.roulette ? Math.floor(rouletteFrame(car.roulette) / 2) : -1;
-    if (car.roulette && !previous.roulette) cues.add('box');
+    const rolling = car.inventoryItems.find(slot => slot.roulette)?.roulette;
+    const roll = rolling ? Math.floor(rouletteFrame(rolling) / 2) : -1;
+    if (car.itemBoxCount > (previous.boxes ?? 0)) cues.add('box');
     if (roll > 0 && roll !== previous.roll) cues.add('roll');
-    if (car.item && previous.roulette && !car.roulette) cues.add('ready');
-    if (car.itemUses < previous.uses) cues.add('use');
+    if (car.itemReadyCount > (previous.ready ?? 0)) cues.add('ready');
+    if (car.coinTossAt > (previous.coinTossAt ?? -Infinity)) cues.add('coin-toss');
+    else if (car.itemUseCount > (previous.uses ?? 0)) cues.add('use');
     if ((car.boostTime > 0 || car.powerTime > 0) && (!previous.boost || car.boostCount !== previous.boostCount)) {
       cues.add('boost');
+    }
+    if (car.speed > roadTopSpeed + 2 && elapsed > (previous.nextCheer ?? raceStart + 2) &&
+        (car.boostTime > 0 || car.powerTime > 0) && Math.random() < 0.08) {
+      cues.add(Math.random() < 0.5 ? 'yahoo' : 'hurray');
+      previous.nextCheer = elapsed + 7 + Math.random() * 8;
+    }
+    if (car.driftDirection && elapsed > (previous.sparkAt ?? 0)) {
+      cues.add('spark');
+      previous.sparkAt = elapsed + 0.14 + Math.random() * 0.12;
     }
     if (car.spinTime > 0 && !previous.spin) cues.add('hit');
     if (car.trickCount > (previous.trickCount ?? 0)) cues.add('trick');
     if (car.chompAt > (previous.chompAt ?? -Infinity)) cues.add('chomp');
-    if (car.inkUntil > (previous.inkUntil ?? 0)) cues.add('ink');
+    const inking = car.inkAt > 0 && elapsed - raceStart >= car.inkAt && previous.inkAt !== car.inkAt;
+    if (inking) cues.add('ink');
+    if (car.coinCount > (previous.coins ?? 0)) cues.add('coin');
+    if (car.shockCount > (previous.shockCount ?? 0) || car.shockUntil > (previous.shockUntil ?? 0)) cues.add('shock');
+    if (car.threatId && elapsed > (previous.threatAt ?? 0)) {
+      cues.add('incoming');
+      previous.threatAt = elapsed + (car.threatId === previous.threatId ? 0.85 : 0.58);
+    }
     if (car.wallContact && !previous.wall && elapsed - (previous.lastWall ?? -Infinity) > 0.3) {
       cues.add('wall');
       previous.lastWall = elapsed;
     }
-    if (car.finishedAt !== null && !previous.finished && showResultsAt === Infinity) cues.add('finish');
-    Object.assign(previous, { roulette: car.roulette, roll, uses: car.itemUses,
+    if (car.lineCrossings > (previous.lineCrossings ?? 0)) cues.add(car.finishedAt === null ? 'lap' : 'finish');
+    Object.assign(previous, { boxes: car.itemBoxCount, ready: car.itemReadyCount, roll, uses: car.itemUseCount,
       trickCount: car.trickCount,
-      chompAt: car.chompAt, inkUntil: car.inkUntil,
+      chompAt: car.chompAt, inkAt: inking ? car.inkAt : previous.inkAt, coins: car.coinCount,
+      shockCount: car.shockCount, shockUntil: car.shockUntil, threatId: car.threatId, lineCrossings: car.lineCrossings,
+      coinTossAt: car.coinTossAt,
       boost: car.boostTime > 0 || car.powerTime > 0, boostCount: car.boostCount,
       spin: car.spinTime > 0, wall: car.wallContact, finished: car.finishedAt !== null });
   }
   for (const cue of cues) audio.cue(cue);
   const active = humans.find(car => car.finishedAt === null);
-  audio.update(elapsed >= raceStart && Boolean(active), elapsed >= flyoverSeconds ? active : undefined,
+  audio.update(elapsed >= raceStart && showResultsAt === Infinity, elapsed >= flyoverSeconds ? active : undefined,
     active?.lap >= track.laps - 1, false, track.id);
 }
 
 function finishRace() {
   if (showResultsAt === Infinity && cars.every(car => car.finishedAt !== null)) {
-    showResultsAt = elapsed + 1.2;
+    showResultsAt = elapsed + 2.25;
     audio.cue('fanfare');
   }
   if (elapsed >= showResultsAt && !hostRequest) {
@@ -1603,14 +1940,19 @@ function frame(now) {
           }
         }
         resolveKartCollisions(track, cars);
-        for (const [index, car] of cars.entries()) advanceProgress(track, car, ...starts[index], raceTime, step);
+        for (const [index, car] of cars.entries()) {
+          advanceProgress(track, car, ...starts[index], raceTime, step);
+          if (car.canvas) followCamera(track, car, step);
+        }
         const positions = standings(cars);
         for (const car of positions) {
           if (cpuDriving(car)) {
             car.fireQueued = false;
             car.lastShellShot = car.controls.shellShot ?? 0;
             car.lastReset = car.controls.resetRequest ?? 0;
-            if (useBotItem(car, positions, raceTime)) trackItems.use(car, raceTime, positions, car.item === 'banana');
+            if (useBotItem(car, positions, raceTime)) {
+              trackItems.use(car, raceTime, positions, ['banana', 'tripleBanana'].includes(car.inventoryItems[0].type));
+            }
             continue;
           }
           const shot = car.controls.shellShot ?? 0;
@@ -1646,7 +1988,7 @@ function frame(now) {
     raceAudio();
   } else {
     panCourse(now);
-    audio.update(false, undefined, false, room.phase !== 'results');
+    audio.update(false, undefined, false, room.phase !== 'results', room.phase === 'results' ? 'results' : undefined);
   }
   requestAnimationFrame(frame);
 }
